@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -48,7 +48,7 @@ const steps = [
   },
   {
     label: "Task Categories",
-    description: "Select relevant categories and tasks",
+    description: "Select relevant categories and tasks for the project",
     icon: <Assignment />,
   },
   {
@@ -80,11 +80,10 @@ const CreateProject = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const [errors, setErrors] = useState({});
   const [activeStep, setActiveStep] = useState(0);
+  const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createProject, categories, employees } = useProject();
-  const [selectedTasksPreview, setSelectedTasksPreview] = useState([]);
+  const { createProject, categories = [], employees = [] } = useProject(); // Default to empty arrays
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -96,27 +95,40 @@ const CreateProject = () => {
     selectedTasks: {},
   });
 
-  useEffect(() => {
+  const selectedTasksPreview = useMemo(() => {
     const tasks = [];
+    if (!categories || categories.length === 0) return tasks;
+
     Object.entries(formData.selectedTasks).forEach(
-      ([categoryId, subcategories]) => {
-        Object.entries(subcategories).forEach(([subcategoryName, taskList]) => {
-          taskList.forEach((task) => {
-            if (task.selected) {
-              tasks.push({
-                categoryName:
-                  categories.find((c) => c.id === categoryId)?.name ||
-                  "Unknown Category",
-                subcategoryName,
-                taskName: task.name,
-              });
-            }
-          });
-        });
+      ([categoryId, subcategoriesData]) => {
+        const category = categories.find((c) => c.id === categoryId);
+        const categoryName = category?.name;
+        const categoryColor = category?.color || theme.palette.grey[500];
+
+        Object.entries(subcategoriesData).forEach(
+          ([subcategoryName, taskList]) => {
+            taskList.forEach((task) => {
+              if (task.selected) {
+                tasks.push({
+                  categoryName,
+                  subcategoryName,
+                  taskName: task.name,
+                  categoryColor,
+                });
+              }
+            });
+          }
+        );
       }
     );
-    setSelectedTasksPreview(tasks);
-  }, [formData.selectedTasks, categories]);
+    return tasks;
+  }, [formData.selectedTasks, categories, theme.palette.grey]);
+
+  useEffect(() => {
+    if (formData.selectedCategories.length > 0 && errors.categories) {
+      setErrors((prev) => ({ ...prev, categories: null }));
+    }
+  }, [formData.selectedCategories, errors.categories]);
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
@@ -126,10 +138,7 @@ const CreateProject = () => {
 
     // Clear error when field is updated
     if (errors[field]) {
-      setErrors((prev) => ({
-        ...prev,
-        [field]: null,
-      }));
+      setErrors((prev) => ({ ...prev, [field]: null }));
     }
   };
 
@@ -139,57 +148,45 @@ const CreateProject = () => {
 
     setFormData((prev) => {
       const isSelected = prev.selectedCategories.includes(categoryId);
+      const newSelectedCategories = isSelected
+        ? prev.selectedCategories.filter((id) => id !== categoryId)
+        : [...prev.selectedCategories, categoryId];
+
+      const newSelectedTasks = { ...prev.selectedTasks };
 
       if (isSelected) {
-        // Remove category and its tasks
-        const newSelectedCategories = prev.selectedCategories.filter(
-          (id) => id !== categoryId
-        );
-        const newSelectedTasks = { ...prev.selectedTasks };
         delete newSelectedTasks[categoryId];
-
-        return {
-          ...prev,
-          selectedCategories: newSelectedCategories,
-          selectedTasks: newSelectedTasks,
-        };
       } else {
-        // Add category with default tasks structure
-        const newSelectedTasks = { ...prev.selectedTasks };
         newSelectedTasks[categoryId] = {};
 
         category.subcategories?.forEach((subcategory) => {
           newSelectedTasks[categoryId][subcategory.name] =
-            subcategory.tasks.map((task) => ({
-              name: task,
+            subcategory.tasks.map((taskName) => ({
+              name: taskName,
               selected: true, // Default to selected
             }));
         });
-
-        return {
-          ...prev,
-          selectedCategories: [...prev.selectedCategories, categoryId],
-          selectedTasks: newSelectedTasks,
-        };
       }
+      return {
+        ...prev,
+        selectedCategories: newSelectedCategories,
+        selectedTasks: newSelectedTasks,
+      };
     });
   };
 
   const handleTaskToggle = (categoryId, subcategoryName, taskIndex) => {
     setFormData((prev) => {
-      const newSelectedTasks = { ...prev.selectedTasks };
+      const newSelectedTasks = JSON.parse(JSON.stringify(prev.selectedTasks)); // Deep copy for safety
       if (
         newSelectedTasks[categoryId] &&
-        newSelectedTasks[categoryId][subcategoryName]
+        newSelectedTasks[categoryId][subcategoryName] &&
+        newSelectedTasks[categoryId][subcategoryName][taskIndex]
       ) {
         newSelectedTasks[categoryId][subcategoryName][taskIndex].selected =
           !newSelectedTasks[categoryId][subcategoryName][taskIndex].selected;
       }
-
-      return {
-        ...prev,
-        selectedTasks: newSelectedTasks,
-      };
+      return { ...prev, selectedTasks: newSelectedTasks };
     });
   };
 
@@ -197,14 +194,28 @@ const CreateProject = () => {
     const newErrors = {};
     switch (step) {
       case 0:
-        if (!formData.name.trim()) newErrors.name = "Project name is required";
+        if (!formData.name.trim()) newErrors.name = "Project name is required.";
         if (!formData.description.trim())
-          newErrors.description = "Project description is required";
+          newErrors.description = "Project description is required.";
         break;
       case 1:
-        if (formData.selectedCategories.length === 0) {
-          newErrors.categories = "Please select at least one category";
+        if (categories.length > 0 && formData.selectedCategories.length === 0) {
+          newErrors.categories = "Please select at least one category.";
         }
+        break;
+      case 2:
+        if (
+          employees &&
+          employees.length > 0 &&
+          formData.assignedTo.length === 0
+        ) {
+          newErrors.assignedTo = "Please assign at least one team member.";
+        }
+        break;
+      case 3:
+        if (errors.submission) newErrors.submission = errors.submission;
+        break;
+      default:
         break;
     }
     setErrors(newErrors);
@@ -222,25 +233,56 @@ const CreateProject = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(activeStep)) return;
+    if (
+      !validateStep(0) ||
+      !validateStep(1) ||
+      !validateStep(2) ||
+      !validateStep(3)
+    ) {
+      for (let i = 0; i <= activeStep; i++) {
+        if (!validateStep(i)) {
+          setActiveStep(i);
+          return;
+        }
+      }
+      if (!validateStep(activeStep)) return;
+    }
 
     setIsSubmitting(true);
-    try {
-      const projectData = {
-        ...formData,
-        tasks: selectedTasksPreview.map((task) => ({
-          name: task.taskName,
-          category: task.categoryName,
-          subcategory: task.subcategoryName,
-          status: "pending",
-          priority: "medium",
-        })),
-      };
+    setErrors((prev) => ({ ...prev, submission: null }));
 
-      await createProject(projectData);
+    const projectPayload = {
+      name: formData.name,
+      description: formData.description,
+      status: formData.status,
+      priority: formData.priority,
+      dueDate: formData.dueDate ? formData.dueDate.toISOString() : null,
+
+      assignedTo: formData.assignedTo,
+
+      selectedCategories: formData.selectedCategories,
+      selectedTasks: formData.selectedTasks,
+
+      tasks: selectedTasksPreview.map((taskPreview) => ({
+        name: taskPreview.taskName,
+        category: taskPreview.categoryName,
+        subcategory: taskPreview.subcategoryName,
+        status: "pending",
+        priority: "medium",
+      })),
+    };
+
+    try {
+      await createProject(projectPayload);
       navigate("/projects");
     } catch (error) {
       console.error("Error creating project:", error);
+      setErrors((prev) => ({
+        ...prev,
+        submission:
+          error.message ||
+          "Failed to create project. Please check the details and try again.",
+      }));
     } finally {
       setIsSubmitting(false);
     }
@@ -258,6 +300,7 @@ const CreateProject = () => {
               onChange={(e) => handleInputChange("name", e.target.value)}
               error={!!errors.name}
               helperText={errors.name}
+              autoFocus
             />
             <TextField
               fullWidth
@@ -271,7 +314,7 @@ const CreateProject = () => {
             />
             <Grid container spacing={3}>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!!errors.status}>
                   <InputLabel>Status</InputLabel>
                   <Select
                     value={formData.status}
@@ -305,7 +348,7 @@ const CreateProject = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!!errors.priority}>
                   <InputLabel>Priority</InputLabel>
                   <Select
                     value={formData.priority}
@@ -355,7 +398,7 @@ const CreateProject = () => {
                 px: 3,
                 border: `2px dashed ${theme.palette.divider}`,
                 borderRadius: 2,
-                backgroundColor: theme.palette.background.paper,
+                backgroundColor: theme.palette.background.default,
               }}
             >
               <Add
@@ -375,7 +418,7 @@ const CreateProject = () => {
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
                 It looks like there are no categories set up yet. Please add
-                categories to proceed with project creation.
+                categories to proceed.
               </Typography>
               <Button
                 variant="contained"
@@ -403,8 +446,8 @@ const CreateProject = () => {
               </Alert>
             </Collapse>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Select the categories that apply to your project. Default tasks
-              will be included for each category.
+              Select categories for your project. Default tasks will be
+              included.
             </Typography>
             <Grid container spacing={2}>
               {categories.map((category) => {
@@ -413,7 +456,7 @@ const CreateProject = () => {
                 );
 
                 return (
-                  <Grid item xs={12} key={category.id}>
+                  <Grid item xs={12} md={6} key={category.id}>
                     <Card
                       elevation={0}
                       sx={{
@@ -432,6 +475,7 @@ const CreateProject = () => {
                           transform: "translateY(-2px)",
                         },
                         borderRadius: 2,
+                        height: "100%",
                       }}
                       onClick={() => handleCategoryToggle(category.id)}
                     >
@@ -464,7 +508,14 @@ const CreateProject = () => {
                           </Typography>
                         </Box>
                         <Collapse in={isCategorySelected}>
-                          <Box sx={{ pl: isMobile ? 2 : 4, pt: 2 }}>
+                          <Box
+                            sx={{
+                              pl: isMobile ? 2 : 4,
+                              pt: 2,
+                              maxHeight: 200,
+                              overflowY: "auto",
+                            }}
+                          >
                             {category.subcategories?.map((subcategory) => (
                               <Box key={subcategory.name} sx={{ mb: 2 }}>
                                 <Typography
@@ -482,49 +533,50 @@ const CreateProject = () => {
                                     gap: 1,
                                   }}
                                 >
-                                  {subcategory.tasks.map((task, taskIndex) => {
-                                    const isTaskSelected =
-                                      formData.selectedTasks[category.id]?.[
-                                        subcategory.name
-                                      ]?.[taskIndex]?.selected;
-                                    return (
-                                      <Chip
-                                        key={taskIndex}
-                                        label={task}
-                                        size="small"
-                                        variant={
-                                          isTaskSelected ? "filled" : "outlined"
-                                        }
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleTaskToggle(
-                                            category.id,
-                                            subcategory.name,
-                                            taskIndex
-                                          );
-                                        }}
-                                        sx={{
-                                          fontWeight: 500,
-                                          // Styles for SELECTED chips
-                                          ...(isTaskSelected && {
-                                            backgroundColor: `${category.color}30`,
-                                            color: category.color,
-                                            borderColor: `${category.color}80`,
-                                            border: "1px solid",
-                                          }),
-                                          // Styles for UNSELECTED chips
-                                          ...(!isTaskSelected && {
-                                            borderColor: `${category.color}80`,
-                                            color: `${category.color}`,
-                                          }),
-                                          "&:hover": {
-                                            backgroundColor: `${category.color}40`,
-                                            color: category.color,
-                                          },
-                                        }}
-                                      />
-                                    );
-                                  })}
+                                  {subcategory.tasks.map(
+                                    (taskName, taskIndex) => {
+                                      const isTaskSelected =
+                                        formData.selectedTasks[category.id]?.[
+                                          subcategory.name
+                                        ]?.[taskIndex]?.selected;
+                                      return (
+                                        <Chip
+                                          key={taskIndex}
+                                          label={taskName}
+                                          size="small"
+                                          variant={
+                                            isTaskSelected
+                                              ? "filled"
+                                              : "outlined"
+                                          }
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleTaskToggle(
+                                              category.id,
+                                              subcategory.name,
+                                              taskIndex
+                                            );
+                                          }}
+                                          sx={{
+                                            fontWeight: 500,
+                                            ...(isTaskSelected && {
+                                              backgroundColor: `${category.color}30`,
+                                              color: category.color,
+                                              borderColor: `${category.color}80`,
+                                              border: "1px solid",
+                                            }),
+                                            ...(!isTaskSelected && {
+                                              borderColor: `${category.color}80`,
+                                              color: `${category.color}`,
+                                            }),
+                                            "&:hover": {
+                                              backgroundColor: `${category.color}40` /* color: category.color (already set or inherits) */,
+                                            },
+                                          }}
+                                        />
+                                      );
+                                    }
+                                  )}
                                 </Box>
                               </Box>
                             ))}
@@ -540,10 +592,68 @@ const CreateProject = () => {
         );
 
       case 2:
+        if (employees.length === 0) {
+          return (
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                py: 8,
+                px: 3,
+                border: `2px dashed ${theme.palette.divider}`,
+                borderRadius: 2,
+                backgroundColor: theme.palette.background.default,
+              }}
+            >
+              <Add
+                sx={{
+                  fontSize: 60,
+                  color: theme.palette.text.secondary,
+                  mb: 2,
+                }}
+              />
+              <Typography
+                variant="h5"
+                color="text.primary"
+                fontWeight={600}
+                gutterBottom
+              >
+                {" "}
+                No Team Members Found{" "}
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                No team members are available to assign. Please add employees
+                first.
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => navigate("/employees")}
+                sx={{
+                  borderRadius: 2,
+                  px: 3,
+                  py: 1.5,
+                  textTransform: "none",
+                  fontWeight: 600,
+                }}
+              >
+                Add Team Member
+              </Button>
+            </Box>
+          );
+        }
         return (
           <Box>
+            <Collapse in={!!errors.assignedTo}>
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {errors.assignedTo}
+              </Alert>
+            </Collapse>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Select team members to assign to this project (optional).
+              Assign team members to this project.
             </Typography>
             <Autocomplete
               multiple
@@ -553,6 +663,7 @@ const CreateProject = () => {
               onChange={(event, newValue) =>
                 handleInputChange("assignedTo", newValue)
               }
+              isOptionEqualToValue={(option, value) => option.id === value.id}
               renderTags={(value, getTagProps) =>
                 value.map((option, index) => (
                   <Chip
@@ -571,17 +682,12 @@ const CreateProject = () => {
                 <TextField
                   {...params}
                   label="Assign Team Members"
-                  placeholder="Search and select team members"
+                  placeholder="Search and select members"
+                  error={!!errors.assignedTo}
                 />
               )}
               sx={{ mb: 3 }}
             />
-            {employees.length === 0 && (
-              <Alert severity="info">
-                No team members found. You can add them in the 'Employees'
-                section and they will appear here.
-              </Alert>
-            )}
           </Box>
         );
 
@@ -595,6 +701,11 @@ const CreateProject = () => {
 
         return (
           <Box>
+            <Collapse in={!!errors.submission}>
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {errors.submission}
+              </Alert>
+            </Collapse>
             <DatePicker
               label="Due Date (Optional)"
               value={formData.dueDate}
@@ -643,7 +754,7 @@ const CreateProject = () => {
                     Project Details
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    <strong>Name:</strong> {formData.name || "Not specified"}
+                    <strong>Name:</strong> {formData.name}
                   </Typography>
                   <Typography
                     variant="body2"
@@ -660,7 +771,7 @@ const CreateProject = () => {
                       size="small"
                       sx={{
                         backgroundColor: `${selectedStatus?.color}40`,
-                        color: `${selectedStatus?.color}`,
+                        color: selectedStatus?.color,
                         fontWeight: 600,
                       }}
                     />
@@ -680,7 +791,7 @@ const CreateProject = () => {
                       size="small"
                       sx={{
                         backgroundColor: `${selectedPriority?.color}40`,
-                        color: `${selectedPriority?.color}`,
+                        color: selectedPriority?.color,
                         fontWeight: 600,
                       }}
                     />
@@ -700,8 +811,8 @@ const CreateProject = () => {
                   elevation={0}
                   sx={{
                     p: 2.5,
-                    backgroundColor: `${theme.palette.primary.main}0D`,
-                    border: `1px solid ${theme.palette.primary.main}40`,
+                    backgroundColor: `${theme.palette.secondary.main}0D`,
+                    border: `1px solid ${theme.palette.secondary.main}40`,
                     height: "100%",
                     borderRadius: 2,
                   }}
@@ -709,7 +820,7 @@ const CreateProject = () => {
                   <Typography
                     variant="subtitle1"
                     fontWeight={600}
-                    color="primary.main"
+                    color="secondary.main"
                     gutterBottom
                   >
                     Team & Tasks
@@ -755,29 +866,19 @@ const CreateProject = () => {
                     borderRadius: 2,
                   }}
                 >
-                  {selectedTasksPreview.map((task, index) => {
-                    // Find the category to get its color
-                    const category = categories.find(
-                      (c) => c.name === task.categoryName
-                    );
-                    const taskColor = category
-                      ? category.color
-                      : theme.palette.grey[500];
-
-                    return (
-                      <Chip
-                        key={index}
-                        label={`${task.categoryName}: ${task.taskName}`}
-                        size="small"
-                        sx={{
-                          fontWeight: 500,
-                          backgroundColor: `${taskColor}26`,
-                          color: `${taskColor}`,
-                          border: `1px solid ${taskColor}80`,
-                        }}
-                      />
-                    );
-                  })}
+                  {selectedTasksPreview.map((task, index) => (
+                    <Chip
+                      key={index}
+                      label={`${task.categoryName}: ${task.taskName}`}
+                      size="small"
+                      sx={{
+                        fontWeight: 500,
+                        backgroundColor: `${task.categoryColor}26`,
+                        color: task.categoryColor,
+                        border: `1px solid ${task.categoryColor}80`,
+                      }}
+                    />
+                  ))}
                 </Paper>
               </Box>
             )}
@@ -853,7 +954,11 @@ const CreateProject = () => {
             mb: 4,
           }}
         >
-          <Stepper activeStep={activeStep} alternativeLabel>
+          <Stepper
+            activeStep={activeStep}
+            alternativeLabel={isMobile ? false : true}
+            orientation={isMobile ? "vertical" : "horizontal"}
+          >
             {steps.map((step) => (
               <Step key={step.label}>
                 <StepLabel
@@ -868,10 +973,13 @@ const CreateProject = () => {
                         justifyContent: "center",
                         backgroundColor: props.active
                           ? theme.palette.primary.main
+                          : props.completed
+                          ? theme.palette.success.main
                           : theme.palette.action.disabledBackground,
-                        color: props.active
-                          ? theme.palette.primary.contrastText
-                          : theme.palette.text.secondary,
+                        color:
+                          props.active || props.completed
+                            ? theme.palette.primary.contrastText
+                            : theme.palette.text.secondary,
                         transition: "all 0.3s ease-in-out",
                         boxShadow: props.active
                           ? "0 3px 10px 0 rgba(0,0,0,.15)"
@@ -882,7 +990,12 @@ const CreateProject = () => {
                     </Box>
                   )}
                 >
-                  <Typography fontWeight={600}>{step.label}</Typography>
+                  <Typography>{step.label}</Typography>
+                  {!isMobile && (
+                    <Typography variant="caption" color="textSecondary">
+                      {step.description}
+                    </Typography>
+                  )}
                 </StepLabel>
               </Step>
             ))}
@@ -942,7 +1055,7 @@ const CreateProject = () => {
                     fontWeight: 600,
                   }}
                 >
-                  {isSubmitting ? "Creating..." : "Create Project"}
+                  {isSubmitting ? "Creating Project..." : "Create Project"}
                 </Button>
               ) : (
                 <Button
