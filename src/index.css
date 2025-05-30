@@ -1,0 +1,209 @@
+/* src/index.css */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #FEFEFE;
+  line-height: 1.6;
+  color: #2D2D2D;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(139, 126, 200, 0.3);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 126, 200, 0.5);
+}
+
+::-webkit-scrollbar-corner {
+  background: #f8f9fa;
+}
+
+/* Selection styles */
+::selection {
+  background-color: rgba(139, 126, 200, 0.2);
+  color: #2D2D2D;
+}
+
+::-moz-selection {
+  background-color: rgba(139, 126, 200, 0.2);
+  color: #2D2D2D;
+}
+
+/* Focus styles for accessibility */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #8B7EC8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.slide-in {
+  animation: slideIn 0.4s ease-out;
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Utility classes */
+.text-gradient {
+  background: linear-gradient(135deg, #8B7EC8, #6B5B95);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.glass-effect {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(139, 126, 200, 0.1);
+}
+
+/* Loading states */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Print styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --primary-color: #5a4fcf;
+    --text-color: #000000;
+    --background-color: #ffffff;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Dark mode support (if implemented later) */
+@media (prefers-color-scheme: dark) {
+  /* Dark mode styles would go here */
+}
+
+/* Responsive typography */
+@media (max-width: 600px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+/* Custom MUI overrides */
+.MuiCssBaseline-root {
+  scroll-behavior: smooth;
+}
+
+/* Loading spinner override */
+.MuiCircularProgress-root {
+  color: #8B7EC8;
+}
+
+/* Custom button hover effects */
+.custom-button-hover {
+  transition: all 0.3s ease-in-out;
+}
+
+.custom-button-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(139, 126, 200, 0.3);
+}
