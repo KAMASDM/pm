@@ -9,11 +9,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
   Autocomplete,
   Card,
   CardContent,
@@ -21,16 +16,25 @@ import {
   Step,
   StepLabel,
   Avatar,
+  useTheme,
+  useMediaQuery,
+  Fade,
+  Paper,
+  Divider,
+  Alert,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import {
   Assignment,
-  Flag,
   Person,
   Category,
   CheckCircle,
+  ArrowBack,
+  NavigateNext,
+  Save,
 } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
+import { useNavigate } from "react-router-dom";
 
 const steps = [
   {
@@ -40,7 +44,7 @@ const steps = [
   },
   {
     label: "Categorization",
-    description: "Category, priority, and tags",
+    description: "Category, priority, and status",
     icon: <Category />,
   },
   {
@@ -59,36 +63,16 @@ const statusOptions = [
   { value: "pending", label: "Pending", color: "#64B5F6" },
   { value: "in-progress", label: "In Progress", color: "#FFB74D" },
   { value: "completed", label: "Completed", color: "#81C784" },
-  { value: "blocked", label: "Blocked", color: "#E57373" },
+  { value: "blocked", label: "Blocked", color: "#F44336" },
 ];
 
 const priorityOptions = [
-  { value: "low", label: "Low", color: "#81C784" },
-  { value: "medium", label: "Medium", color: "#FFD54F" },
-  { value: "high", label: "High", color: "#FFB74D" },
-  { value: "urgent", label: "Urgent", color: "#E57373" },
+  { value: "low", label: "Low", color: "#6BBF6B" },
+  { value: "medium", label: "Medium", color: "#FFD700" },
+  { value: "high", label: "High", color: "#DC3545" },
 ];
 
-const tagSuggestions = [
-  "Frontend",
-  "Backend",
-  "Database",
-  "API",
-  "UI/UX",
-  "Testing",
-  "Bug Fix",
-  "Feature",
-  "Enhancement",
-  "Research",
-  "Documentation",
-];
-
-const CreateTask = ({
-  open,
-  onClose,
-  projectId = null,
-  initialData = null,
-}) => {
+const CreateTask = ({ projectId = null, initialData = null }) => {
   const { projects, categories, employees, createTask } = useProject();
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState({
@@ -100,13 +84,12 @@ const CreateTask = ({
     status: initialData?.status || "pending",
     priority: initialData?.priority || "medium",
     assignedTo: initialData?.assignedTo || null,
-    dueDate: initialData?.dueDate || null,
+    dueDate: initialData?.dueDate ? new Date(initialData.dueDate) : null,
     estimatedHours: initialData?.estimatedHours || "",
-    tags: initialData?.tags || [],
-    attachments: [],
-    dependencies: [],
   });
-
+  const theme = useTheme();
+  const navigate = useNavigate();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -116,7 +99,6 @@ const CreateTask = ({
       [field]: value,
     }));
 
-    // Clear error when field is updated
     if (errors[field]) {
       setErrors((prev) => ({
         ...prev,
@@ -127,7 +109,6 @@ const CreateTask = ({
 
   const validateStep = (step) => {
     const newErrors = {};
-
     switch (step) {
       case 0:
         if (!formData.name.trim()) newErrors.name = "Task name is required";
@@ -139,13 +120,10 @@ const CreateTask = ({
           newErrors.category = "Category is required";
         break;
       case 2:
-        // Assignment is optional
         break;
       case 3:
-        // Final validation
         break;
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -161,14 +139,26 @@ const CreateTask = ({
   };
 
   const handleSubmit = async () => {
+    for (let i = 0; i <= activeStep; i++) {
+      if (!validateStep(i)) {
+        setActiveStep(i);
+        return;
+      }
+    }
     if (!validateStep(activeStep)) return;
 
     setIsSubmitting(true);
+    setErrors((prev) => ({ ...prev, submission: null }));
     try {
       await createTask(formData);
       handleClose();
+      navigate("/tasks");
     } catch (error) {
       console.error("Error creating task:", error);
+      setErrors((prev) => ({
+        ...prev,
+        submission: error.message || "Failed to create task.",
+      }));
     } finally {
       setIsSubmitting(false);
     }
@@ -186,20 +176,18 @@ const CreateTask = ({
       assignedTo: null,
       dueDate: null,
       estimatedHours: "",
-      tags: [],
-      attachments: [],
-      dependencies: [],
     });
     setActiveStep(0);
     setErrors({});
-    onClose();
   };
 
   const getSelectedProject = () => {
+    if (!formData.projectId || !projects) return null;
     return projects.find((p) => p.id === formData.projectId);
   };
 
   const getSelectedCategory = () => {
+    if (!formData.category || !categories) return null;
     return categories.find((c) => c.name === formData.category);
   };
 
@@ -233,14 +221,14 @@ const CreateTask = ({
               sx={{ mb: 3 }}
               placeholder="Describe what needs to be done, acceptance criteria, etc."
             />
-            <FormControl fullWidth error={!!errors.projectId}>
+            <FormControl fullWidth error={!!errors.projectId} sx={{ mb: 3 }}>
               <InputLabel>Project</InputLabel>
               <Select
                 value={formData.projectId}
                 label="Project"
                 onChange={(e) => handleInputChange("projectId", e.target.value)}
               >
-                {projects.map((project) => (
+                {(projects || []).map((project) => (
                   <MenuItem key={project.id} value={project.id}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                       <Box
@@ -248,7 +236,7 @@ const CreateTask = ({
                           width: 12,
                           height: 12,
                           borderRadius: "50%",
-                          backgroundColor: "#8B7EC8",
+                          backgroundColor: project.color || "#8B7EC8",
                         }}
                       />
                       {project.name}
@@ -266,23 +254,6 @@ const CreateTask = ({
                 </Typography>
               )}
             </FormControl>
-            {formData.projectId && (
-              <Card
-                sx={{ mt: 2, backgroundColor: "rgba(139, 126, 200, 0.05)" }}
-              >
-                <CardContent sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Selected Project
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {getSelectedProject()?.name}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {getSelectedProject()?.description}
-                  </Typography>
-                </CardContent>
-              </Card>
-            )}
           </Box>
         );
 
@@ -296,7 +267,7 @@ const CreateTask = ({
                 label="Category"
                 onChange={(e) => handleInputChange("category", e.target.value)}
               >
-                {categories.map((category) => (
+                {(categories || []).map((category) => (
                   <MenuItem key={category.id} value={category.name}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                       <Box
@@ -341,7 +312,7 @@ const CreateTask = ({
               </FormControl>
             )}
             <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Priority</InputLabel>
                   <Select
@@ -356,7 +327,14 @@ const CreateTask = ({
                         <Box
                           sx={{ display: "flex", alignItems: "center", gap: 1 }}
                         >
-                          <Flag sx={{ color: option.color, fontSize: 16 }} />
+                          <Box
+                            sx={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: "50%",
+                              backgroundColor: option.color,
+                            }}
+                          />
                           {option.label}
                         </Box>
                       </MenuItem>
@@ -364,7 +342,7 @@ const CreateTask = ({
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Status</InputLabel>
                   <Select
@@ -395,33 +373,6 @@ const CreateTask = ({
                 </FormControl>
               </Grid>
             </Grid>
-            <Autocomplete
-              multiple
-              options={tagSuggestions}
-              freeSolo
-              value={formData.tags}
-              onChange={(event, newValue) =>
-                handleInputChange("tags", newValue)
-              }
-              renderTags={(value, getTagProps) =>
-                value.map((option, index) => (
-                  <Chip
-                    variant="outlined"
-                    label={option}
-                    {...getTagProps({ index })}
-                    key={option}
-                    sx={{ borderColor: "#8B7EC8", color: "#8B7EC8" }}
-                  />
-                ))
-              }
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Tags (Optional)"
-                  placeholder="Add tags to categorize this task"
-                />
-              )}
-            />
           </Box>
         );
 
@@ -429,14 +380,15 @@ const CreateTask = ({
         return (
           <Box sx={{ mt: 2 }}>
             <Autocomplete
-              options={employees}
-              getOptionLabel={(option) => option.name || option.email}
+              options={employees || []}
+              getOptionLabel={(option) => option?.name || option?.email || ""}
               value={formData.assignedTo}
               onChange={(event, newValue) =>
                 handleInputChange("assignedTo", newValue)
               }
+              isOptionEqualToValue={(option, value) => option?.id === value?.id}
               renderOption={(props, option) => (
-                <Box component="li" {...props}>
+                <Box component="li" {...props} key={option.id}>
                   <Avatar
                     sx={{
                       mr: 2,
@@ -446,12 +398,12 @@ const CreateTask = ({
                     }}
                     src={option.photoURL}
                   >
-                    {option.name?.charAt(0)}
+                    {option.name?.charAt(0).toUpperCase()}
                   </Avatar>
                   <Box>
                     <Typography variant="body2">{option.name}</Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {option.role} • {option.email}
+                      {option.role || "N/A"} • {option.email}
                     </Typography>
                   </Box>
                 </Box>
@@ -466,17 +418,17 @@ const CreateTask = ({
               sx={{ mb: 3 }}
             />
             <Grid container spacing={2}>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <DatePicker
                   label="Due Date (Optional)"
                   value={formData.dueDate}
                   onChange={(newValue) =>
                     handleInputChange("dueDate", newValue)
                   }
-                  renderInput={(params) => <TextField {...params} fullWidth />}
+                  slotProps={{ textField: { fullWidth: true } }}
                 />
               </Grid>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Estimated Hours (Optional)"
@@ -502,14 +454,15 @@ const CreateTask = ({
                       sx={{ bgcolor: "primary.main" }}
                       src={formData.assignedTo.photoURL}
                     >
-                      {formData.assignedTo.name?.charAt(0)}
+                      {formData.assignedTo.name?.charAt(0).toUpperCase()}
                     </Avatar>
                     <Box>
                       <Typography variant="body2" fontWeight={600}>
                         {formData.assignedTo.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {formData.assignedTo.role} • {formData.assignedTo.email}
+                        {formData.assignedTo.role || "N/A"} •{" "}
+                        {formData.assignedTo.email}
                       </Typography>
                     </Box>
                   </Box>
@@ -519,9 +472,20 @@ const CreateTask = ({
           </Box>
         );
 
-      case 3:
+      case 3: {
+        const project = getSelectedProject();
+        const priority = priorityOptions.find(
+          (p) => p.value === formData.priority
+        );
+        const status = statusOptions.find((s) => s.value === formData.status);
+
         return (
           <Box sx={{ mt: 2 }}>
+            {errors.submission && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {errors.submission}
+              </Alert>
+            )}
             <Typography variant="h6" gutterBottom>
               Task Summary
             </Typography>
@@ -529,7 +493,10 @@ const CreateTask = ({
               <Grid item xs={12} md={6}>
                 <Card
                   elevation={0}
-                  sx={{ backgroundColor: "rgba(139, 126, 200, 0.05)" }}
+                  sx={{
+                    backgroundColor: "rgba(139, 126, 200, 0.05)",
+                    height: "100%",
+                  }}
                 >
                   <CardContent>
                     <Typography
@@ -543,10 +510,10 @@ const CreateTask = ({
                       <strong>Name:</strong> {formData.name}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>Project:</strong> {getSelectedProject()?.name}
+                      <strong>Project:</strong> {project?.name || "N/A"}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>Category:</strong> {formData.category}
+                      <strong>Category:</strong> {formData.category || "N/A"}
                     </Typography>
                     {formData.subcategory && (
                       <Typography variant="body2">
@@ -559,7 +526,10 @@ const CreateTask = ({
               <Grid item xs={12} md={6}>
                 <Card
                   elevation={0}
-                  sx={{ backgroundColor: "rgba(139, 126, 200, 0.05)" }}
+                  sx={{
+                    backgroundColor: "rgba(139, 126, 200, 0.05)",
+                    height: "100%",
+                  }}
                 >
                   <CardContent>
                     <Typography
@@ -570,19 +540,10 @@ const CreateTask = ({
                       Details
                     </Typography>
                     <Typography variant="body2">
-                      <strong>Priority:</strong>{" "}
-                      {
-                        priorityOptions.find(
-                          (p) => p.value === formData.priority
-                        )?.label
-                      }
+                      <strong>Priority:</strong> {priority?.label || "N/A"}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>Status:</strong>{" "}
-                      {
-                        statusOptions.find((s) => s.value === formData.status)
-                          ?.label
-                      }
+                      <strong>Status:</strong> {status?.label || "N/A"}
                     </Typography>
                     {formData.assignedTo && (
                       <Typography variant="body2">
@@ -592,7 +553,12 @@ const CreateTask = ({
                     {formData.dueDate && (
                       <Typography variant="body2">
                         <strong>Due:</strong>{" "}
-                        {formData.dueDate.toLocaleDateString()}
+                        {new Date(formData.dueDate).toLocaleDateString()}
+                      </Typography>
+                    )}
+                    {formData.estimatedHours && (
+                      <Typography variant="body2">
+                        <strong>Est. Hours:</strong> {formData.estimatedHours}h
                       </Typography>
                     )}
                   </CardContent>
@@ -612,161 +578,226 @@ const CreateTask = ({
                   >
                     Description
                   </Typography>
-                  <Typography variant="body2">
+                  <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
                     {formData.description}
                   </Typography>
                 </CardContent>
               </Card>
             )}
-            {formData.tags.length > 0 && (
-              <Box sx={{ mt: 2 }}>
-                <Typography
-                  variant="subtitle2"
-                  color="text.secondary"
-                  gutterBottom
-                >
-                  Tags
-                </Typography>
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-                  {formData.tags.map((tag, index) => (
-                    <Chip
-                      key={index}
-                      label={tag}
-                      size="small"
-                      variant="outlined"
-                      sx={{ borderColor: "#8B7EC8", color: "#8B7EC8" }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            )}
           </Box>
         );
-
+      }
       default:
         return null;
     }
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleClose}
-      maxWidth="lg"
-      fullWidth
-      PaperProps={{
-        sx: { borderRadius: 3, maxHeight: "90vh" },
-      }}
-    >
-      <DialogTitle sx={{ pb: 1 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Assignment sx={{ color: "primary.main" }} />
-          <Typography variant="h6" fontWeight={600}>
-            Create New Task
-          </Typography>
-        </Box>
-      </DialogTitle>
-      <DialogContent sx={{ p: 0 }}>
-        <Grid container>
-          <Grid
-            item
-            xs={12}
-            md={4}
-            sx={{ borderRight: { md: "1px solid rgba(0,0,0,0.12)" } }}
-          >
-            <Box sx={{ p: 3 }}>
-              <Stepper activeStep={activeStep} orientation="vertical">
-                {steps.map((step, index) => (
-                  <Step key={step.label}>
-                    <StepLabel
-                      StepIconComponent={() => (
-                        <Box
-                          sx={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: "50%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor:
-                              index <= activeStep
-                                ? "#8B7EC8"
-                                : "rgba(139, 126, 200, 0.2)",
-                            color:
-                              index <= activeStep ? "white" : "text.secondary",
-                            fontSize: 14,
-                          }}
-                        >
-                          {index < activeStep ? (
-                            <CheckCircle sx={{ fontSize: 18 }} />
-                          ) : (
-                            step.icon
-                          )}
-                        </Box>
-                      )}
-                    >
-                      <Typography variant="subtitle2" fontWeight={600}>
-                        {step.label}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {step.description}
-                      </Typography>
-                    </StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-            </Box>
-          </Grid>
-          <Grid item xs={12} md={8}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                {steps[activeStep].label}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                {steps[activeStep].description}
-              </Typography>
-
-              {renderStepContent(activeStep)}
-            </Box>
-          </Grid>
-        </Grid>
-      </DialogContent>
-      <DialogActions sx={{ p: 3, borderTop: "1px solid rgba(0,0,0,0.12)" }}>
-        <Button onClick={handleClose} sx={{ textTransform: "none" }}>
-          Cancel
-        </Button>
-        <Box sx={{ flex: 1 }} />
-        <Button
-          onClick={handleBack}
-          disabled={activeStep === 0}
+    <Fade in={true} timeout={600}>
+      <Box>
+        <Box
           sx={{
-            mr: 1,
-            textTransform: "none",
-            visibility: activeStep === 0 ? "hidden" : "visible",
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            justifyContent: "space-between",
+            alignItems: isMobile ? "flex-start" : "center",
+            mb: 4,
+            gap: 2,
           }}
         >
-          Back
-        </Button>
-        {activeStep === steps.length - 1 ? (
+          <Box>
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{
+                fontWeight: 700,
+                background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                backgroundClip: "text",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              {initialData ? "Edit Task" : "Create New Task"}
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Follow the steps to setup your task.
+            </Typography>
+          </Box>
           <Button
             variant="contained"
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            sx={{ textTransform: "none", px: 3 }}
+            color="primary"
+            startIcon={<ArrowBack />}
+            onClick={() =>
+              navigate(
+                projectId && !initialData ? `/projects/${projectId}` : "/tasks"
+              )
+            }
+            sx={{
+              borderRadius: 2,
+              px: 3,
+              py: 1.5,
+              textTransform: "none",
+              fontWeight: 600,
+              boxShadow: "0 4px 12px rgba(139, 126, 200, 0.3)",
+              "&:hover": {
+                boxShadow: "0 6px 20px rgba(139, 126, 200, 0.4)",
+                transform: "translateY(-2px)",
+              },
+            }}
           >
-            {isSubmitting ? "Creating Task..." : "Create Task"}
+            Back to Tasks
           </Button>
-        ) : (
-          <Button
-            variant="contained"
-            onClick={handleNext}
-            sx={{ textTransform: "none", px: 3 }}
+        </Box>
+        <Paper
+          elevation={0}
+          sx={{
+            p: isMobile ? 1 : 2,
+            background:
+              "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 3,
+            mb: 4,
+          }}
+        >
+          <Stepper
+            activeStep={activeStep}
+            alternativeLabel={!isMobile}
+            orientation={isMobile ? "vertical" : "horizontal"}
           >
-            Continue
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
+            {steps.map((step, index) => (
+              <Step key={step.label} completed={activeStep > index}>
+                <StepLabel
+                  StepIconComponent={(props) => (
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: props.active
+                          ? theme.palette.primary.main
+                          : props.completed
+                          ? theme.palette.success.main
+                          : theme.palette.action.disabledBackground,
+                        color:
+                          props.active || props.completed
+                            ? theme.palette.primary.contrastText
+                            : theme.palette.text.secondary,
+                        transition: "all 0.3s ease-in-out",
+                        boxShadow: props.active
+                          ? "0 3px 10px 0 rgba(0,0,0,.15)"
+                          : "none",
+                      }}
+                    >
+                      {props.completed ? <CheckCircle /> : step.icon}
+                    </Box>
+                  )}
+                >
+                  <Typography>{step.label}</Typography>
+                  {!isMobile && (
+                    <Typography variant="caption" color="textSecondary">
+                      {step.description}
+                    </Typography>
+                  )}
+                </StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+        </Paper>
+        <Paper
+          elevation={0}
+          sx={{
+            p: isMobile ? 2 : 4,
+            background:
+              "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 3,
+          }}
+        >
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h5" gutterBottom fontWeight={600}>
+              {steps[activeStep].label}
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              {steps[activeStep].description}
+            </Typography>
+          </Box>
+          <Divider sx={{ mb: 4 }} />
+
+          {renderStepContent(activeStep)}
+
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              mt: 4,
+              pt: 3,
+              borderTop: `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Button
+              onClick={handleBack}
+              disabled={activeStep === 0}
+              sx={{
+                visibility: activeStep === 0 ? "hidden" : "visible",
+                px: 3,
+                py: 1.2,
+                borderRadius: 2,
+                textTransform: "none",
+                fontWeight: 600,
+              }}
+            >
+              Back
+            </Button>
+            <Box>
+              {activeStep === steps.length - 1 ? (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  startIcon={<Save />}
+                  sx={{
+                    px: 3,
+                    py: 1.2,
+                    borderRadius: 2,
+                    textTransform: "none",
+                    fontWeight: 600,
+                  }}
+                >
+                  {isSubmitting
+                    ? initialData
+                      ? "Saving Task..."
+                      : "Creating Task..."
+                    : initialData
+                    ? "Save Changes"
+                    : "Create Task"}
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleNext}
+                  endIcon={<NavigateNext />}
+                  sx={{
+                    px: 3,
+                    py: 1.2,
+                    borderRadius: 2,
+                    textTransform: "none",
+                    fontWeight: 600,
+                  }}
+                >
+                  Continue
+                </Button>
+              )}
+            </Box>
+          </Box>
+        </Paper>
+      </Box>
+    </Fade>
   );
 };
 

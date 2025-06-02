@@ -36,10 +36,12 @@ import { stringToColor } from "../../helpers/stringToColor";
 
 const ProjectCard = ({ project }) => {
   const navigate = useNavigate();
-  const { deleteProject } = useProject();
+  const { deleteProject, getTasksByProject } = useProject();
   const [anchorEl, setAnchorEl] = useState(null);
-  const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
+
+  const tasks = getTasksByProject(project.id);
 
   const handleMenuOpen = (event) => {
     event.stopPropagation();
@@ -106,11 +108,11 @@ const ProjectCard = ({ project }) => {
   };
 
   const calculateProgress = () => {
-    if (!project.tasks || project.tasks.length === 0) return 0;
-    const completedTasks = project.tasks.filter(
+    if (!tasks || tasks.length === 0) return 0;
+    const completedTasks = tasks.filter(
       (task) => task.status === "completed"
     ).length;
-    return Math.round((completedTasks / project.tasks.length) * 100);
+    return Math.round((completedTasks / tasks.length) * 100);
   };
 
   const formatDate = (date) => {
@@ -261,7 +263,7 @@ const ProjectCard = ({ project }) => {
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <Assignment fontSize="small" sx={{ color: "text.secondary" }} />
             <Typography variant="body2" color="text.secondary">
-              {project.tasks?.length || 0} tasks
+              {tasks?.length || 0} tasks
             </Typography>
           </Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -340,8 +342,8 @@ const ProjectCard = ({ project }) => {
                   src={project.assignedTo[0].photoURL}
                 >
                   {(project.assignedTo[0].name || project.assignedTo[0].email)
-                    .charAt(0)
-                    .toUpperCase()}
+                    ?.charAt(0)
+                    ?.toUpperCase()}
                 </Avatar>
               </Tooltip>
             ) : (

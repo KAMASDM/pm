@@ -16,6 +16,7 @@ import Layout from "./components/layout/Layout";
 import ProjectList from "./components/projects/ProjectList";
 import ProjectDetails from "./components/projects/ProjectDetails";
 import CreateProject from "./components/projects/CreateProject";
+import CreateTask from "./components/tasks/CreateTask";
 import TaskList from "./components/tasks/TaskList";
 import CategoryManager from "./components/tasks/CategoryManager";
 import EmployeeList from "./components/employees/EmployeeList";
@@ -46,6 +47,7 @@ function App() {
                   <Route path="projects/:id" element={<ProjectDetails />} />
                   <Route path="projects/:id/edit" element={<CreateProject />} />
                   <Route path="tasks" element={<TaskList />} />
+                  <Route path="tasks/create" element={<CreateTask />} />
                   <Route path="categories" element={<CategoryManager />} />
                   <Route path="employees" element={<EmployeeList />} />
                   <Route
