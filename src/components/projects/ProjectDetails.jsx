@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react"; // Added useMemo
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box,
@@ -88,19 +88,20 @@ const taskPriorityOptions = [
 const ProjectDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { projects, updateProject, deleteProject, createTask } = useProject();
+  const { projects, updateProject, deleteProject, getTasksByProject } =
+    useProject();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
+  const tasks = getTasksByProject(id);
+
   const [project, setProject] = useState(null);
-  const [projectTasks, setProjectTasks] = useState([]); // Derived from project state
   const [loading, setLoading] = useState(true);
   const [tabValue, setTabValue] = useState(0);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
 
   // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Loading states
@@ -120,16 +121,6 @@ const ProjectDetails = () => {
     dueDate: null,
   });
 
-  const [taskForm, setTaskForm] = useState({
-    name: "",
-    description: "",
-    status: "pending",
-    priority: "medium",
-    assignedTo: null,
-    category: "",
-    subcategory: "",
-  });
-
   useEffect(() => {
     setLoading(true);
     const foundProject = projects.find((p) => p.id === id);
@@ -142,18 +133,16 @@ const ProjectDetails = () => {
         priority: foundProject.priority || "medium",
         dueDate: foundProject.dueDate || null,
       });
-      setProjectTasks(foundProject.tasks || []);
     } else {
       setProject(null);
-      setProjectTasks([]);
     }
     setLoading(false);
   }, [id, projects]);
 
   const groupedTasks = useMemo(() => {
     const groups = {};
-    if (project && project.tasks && Array.isArray(project.tasks)) {
-      project.tasks.forEach((task) => {
+    if (tasks && Array.isArray(tasks)) {
+      tasks.forEach((task) => {
         const category = task.category || "Uncategorized";
         const subcategory = task.subcategory || "General";
 
@@ -167,15 +156,15 @@ const ProjectDetails = () => {
       });
     }
     return groups;
-  }, [project]);
+  }, [tasks]);
 
   const calculateProgress = useMemo(() => {
-    if (!projectTasks || projectTasks.length === 0) return 0;
-    const completedTasks = projectTasks.filter(
+    if (!tasks || tasks.length === 0) return 0;
+    const completedTasks = tasks.filter(
       (task) => task.status === "completed"
     ).length;
-    return Math.round((completedTasks / projectTasks.length) * 100);
-  }, [projectTasks]);
+    return Math.round((completedTasks / tasks.length) * 100);
+  }, [tasks]);
 
   const handleMenuClick = (event) => {
     setMenuAnchorEl(event.currentTarget);
@@ -213,33 +202,6 @@ const ProjectDetails = () => {
     }
   };
 
-  const handleCreateTask = async () => {
-    if (!project) return;
-    setIsSubmitting((prev) => ({ ...prev, taskCreate: true }));
-    try {
-      await createTask({
-        ...taskForm,
-        projectId: project.id,
-        projectName: project.name,
-        createdAt: new Date(),
-      });
-      setTaskDialogOpen(false);
-      setTaskForm({
-        name: "",
-        description: "",
-        status: "pending",
-        priority: "medium",
-        assignedTo: null,
-        category: "",
-        subcategory: "",
-      });
-    } catch (error) {
-      console.error("Error creating task:", error);
-    } finally {
-      setIsSubmitting((prev) => ({ ...prev, taskCreate: false }));
-    }
-  };
-
   const formatDate = (dateInput) => {
     if (!dateInput) return "Not set";
     try {
@@ -263,16 +225,16 @@ const ProjectDetails = () => {
 
   const getTasksByStatus = useCallback(
     (status) => {
-      return projectTasks.filter((task) => task.status === status);
+      return tasks.filter((task) => task.status === status);
     },
-    [projectTasks]
+    [tasks]
   );
 
   const quickStats = useMemo(
     () => [
       {
         label: "Total Tasks",
-        value: projectTasks.length,
+        value: tasks.length,
         icon: <DonutLarge />,
         color: theme.palette.primary.main,
       },
@@ -309,7 +271,7 @@ const ProjectDetails = () => {
           "#F44336",
       },
     ],
-    [getTasksByStatus, projectTasks.length, theme.palette.primary.main]
+    [getTasksByStatus, tasks.length, theme.palette.primary.main]
   );
 
   if (loading) {
@@ -486,24 +448,6 @@ const ProjectDetails = () => {
           </Box>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<Add />}
-              onClick={() => setTaskDialogOpen(true)}
-              aria-label="Add new task to this project"
-              sx={{
-                borderRadius: 2,
-                px: 3,
-                py: 1,
-                textTransform: "none",
-                fontWeight: 600,
-                boxShadow: "none",
-                "&:hover": { boxShadow: "0 2px 8px rgba(139, 126, 200, 0.4)" },
-              }}
-            >
-              Add Task
-            </Button>
             <IconButton
               onClick={handleMenuClick}
               aria-label="Project options menu"
@@ -581,17 +525,14 @@ const ProjectDetails = () => {
                       component="span"
                       sx={{ color: "text.primary", fontWeight: 600 }}
                     >
-                      {
-                        projectTasks.filter((t) => t.status === "completed")
-                          .length
-                      }
+                      {tasks.filter((t) => t.status === "completed").length}
                     </Box>{" "}
                     of{" "}
                     <Box
                       component="span"
                       sx={{ color: "text.primary", fontWeight: 600 }}
                     >
-                      {projectTasks.length}
+                      {tasks.length}
                     </Box>{" "}
                     tasks completed
                   </Typography>
@@ -617,7 +558,7 @@ const ProjectDetails = () => {
                   <Tab
                     label={
                       <Badge
-                        badgeContent={projectTasks.length}
+                        badgeContent={tasks.length}
                         color="primary"
                         sx={{ "& .MuiBadge-badge": { right: -10, top: -2 } }}
                       >
@@ -629,7 +570,7 @@ const ProjectDetails = () => {
                     sx={{
                       minWidth: isMobile ? "auto" : 120,
                       textTransform: "none",
-                      pr: projectTasks.length > 0 ? 3 : "inherit",
+                      pr: tasks.length > 0 ? 3 : "inherit",
                     }}
                   />
                   <Tab
@@ -706,7 +647,7 @@ const ProjectDetails = () => {
                                 </Typography>
                                 <Grid container spacing={2}>
                                   {Object.entries(subcategories).map(
-                                    ([subcategory, tasks]) => (
+                                    ([subcategory, categoryTasks]) => (
                                       <Grid
                                         item
                                         xs={12}
@@ -741,8 +682,10 @@ const ProjectDetails = () => {
                                             variant="body2"
                                             color="text.secondary"
                                           >
-                                            {tasks.length} task
-                                            {tasks.length !== 1 ? "s" : ""}
+                                            {categoryTasks.length} task{" "}
+                                            {categoryTasks.length !== 1
+                                              ? "s"
+                                              : ""}
                                           </Typography>
                                         </Card>
                                       </Grid>
@@ -767,7 +710,7 @@ const ProjectDetails = () => {
                     id="project-tabpanel-1"
                     aria-labelledby="project-tab-1"
                   >
-                    {projectTasks.length === 0 ? (
+                    {tasks.length === 0 ? (
                       <Box
                         sx={{
                           textAlign: "center",
@@ -792,25 +735,10 @@ const ProjectDetails = () => {
                         >
                           No tasks yet
                         </Typography>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{ mb: 3 }}
-                        >
-                          Add your first task to get started
-                        </Typography>
-                        <Button
-                          variant="contained"
-                          startIcon={<Add />}
-                          onClick={() => setTaskDialogOpen(true)}
-                          sx={{ borderRadius: 2 }}
-                        >
-                          Create Task
-                        </Button>
                       </Box>
                     ) : (
                       <List>
-                        {projectTasks.map((task) => {
+                        {tasks.map((task) => {
                           const currentTaskStatus = taskStatusOptions.find(
                             (opt) => opt.value === task.status
                           );
@@ -1080,8 +1008,8 @@ const ProjectDetails = () => {
                           src={member.photoURL}
                         >
                           {(member.name || member.email)
-                            .charAt(0)
-                            .toUpperCase()}
+                            ?.charAt(0)
+                            ?.toUpperCase()}
                         </Avatar>
                       </Tooltip>
                     ))}
@@ -1295,159 +1223,6 @@ const ProjectDetails = () => {
           </DialogActions>
         </Dialog>
         <Dialog
-          open={taskDialogOpen}
-          onClose={() => {
-            if (!isSubmitting.taskCreate) setTaskDialogOpen(false);
-          }}
-          maxWidth="sm"
-          fullWidth
-          PaperProps={{ sx: { borderRadius: 3, overflow: "visible" } }}
-        >
-          {isSubmitting.taskCreate && (
-            <LinearProgress
-              sx={{ position: "absolute", top: 0, width: "100%" }}
-            />
-          )}
-          <DialogTitle sx={{ fontWeight: 600, pb: 1 }}>
-            Add New Task
-          </DialogTitle>
-          <DialogContent>
-            <TextField
-              fullWidth
-              label="Task Name"
-              value={taskForm.name}
-              onChange={(e) =>
-                setTaskForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-              sx={{ mb: 2, mt: 1 }}
-              disabled={isSubmitting.taskCreate}
-            />
-            <TextField
-              fullWidth
-              label="Description"
-              value={taskForm.description}
-              onChange={(e) =>
-                setTaskForm((prev) => ({
-                  ...prev,
-                  description: e.target.value,
-                }))
-              }
-              multiline
-              rows={2}
-              sx={{ mb: 2 }}
-              disabled={isSubmitting.taskCreate}
-            />
-            <TextField
-              fullWidth
-              label="Category (Optional)"
-              value={taskForm.category}
-              onChange={(e) =>
-                setTaskForm((prev) => ({ ...prev, category: e.target.value }))
-              }
-              sx={{ mb: 2 }}
-              disabled={isSubmitting.taskCreate}
-            />
-            <TextField
-              fullWidth
-              label="Subcategory (Optional)"
-              value={taskForm.subcategory}
-              onChange={(e) =>
-                setTaskForm((prev) => ({
-                  ...prev,
-                  subcategory: e.target.value,
-                }))
-              }
-              sx={{ mb: 2 }}
-              disabled={isSubmitting.taskCreate}
-            />
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth disabled={isSubmitting.taskCreate}>
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    value={taskForm.status}
-                    label="Status"
-                    onChange={(e) =>
-                      setTaskForm((prev) => ({
-                        ...prev,
-                        status: e.target.value,
-                      }))
-                    }
-                  >
-                    {taskStatusOptions.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <Box
-                            sx={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: "50%",
-                              backgroundColor: option.color,
-                            }}
-                          />
-                          {option.label}
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth disabled={isSubmitting.taskCreate}>
-                  <InputLabel>Priority</InputLabel>
-                  <Select
-                    value={taskForm.priority}
-                    label="Priority"
-                    onChange={(e) =>
-                      setTaskForm((prev) => ({
-                        ...prev,
-                        priority: e.target.value,
-                      }))
-                    }
-                  >
-                    {taskPriorityOptions.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <Box
-                            sx={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: "50%",
-                              backgroundColor: option.color,
-                            }}
-                          />
-                          {option.label}
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions sx={{ p: "16px 24px" }}>
-            <Button
-              onClick={() => setTaskDialogOpen(false)}
-              sx={{ borderRadius: 2, px: 2 }}
-              disabled={isSubmitting.taskCreate}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleCreateTask}
-              disabled={!taskForm.name.trim() || isSubmitting.taskCreate}
-              sx={{ borderRadius: 2, px: 2, minWidth: 100 }}
-            >
-              {isSubmitting.taskCreate ? "Adding..." : "Add Task"}
-            </Button>
-          </DialogActions>
-        </Dialog>
-        <Dialog
           open={deleteDialogOpen}
           onClose={() => {
             if (!isSubmitting.projectDelete) setDeleteDialogOpen(false);
@@ -1463,7 +1238,8 @@ const ProjectDetails = () => {
           <DialogTitle sx={{ fontWeight: 600 }}>Delete Project</DialogTitle>
           <DialogContent>
             <DialogContentText>
-              Are you sure you want to delete the project "<b>{project.name}</b>
+              Are you sure you want to delete the project "
+              <b>{project?.name}</b>
               "? This action is permanent and cannot be undone. All associated
               tasks will also be deleted.
             </DialogContentText>

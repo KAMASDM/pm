@@ -83,7 +83,14 @@ const CreateProject = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createProject, categories = [], employees = [] } = useProject(); // Default to empty arrays
+
+  const {
+    createProject,
+    createTask,
+    categories = [],
+    employees = [],
+  } = useProject();
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -105,20 +112,27 @@ const CreateProject = () => {
         const categoryName = category?.name;
         const categoryColor = category?.color || theme.palette.grey[500];
 
-        Object.entries(subcategoriesData).forEach(
-          ([subcategoryName, taskList]) => {
-            taskList.forEach((task) => {
-              if (task.selected) {
-                tasks.push({
-                  categoryName,
-                  subcategoryName,
-                  taskName: task.name,
-                  categoryColor,
+        if (category && subcategoriesData) {
+          Object.entries(subcategoriesData).forEach(
+            ([subcategoryName, taskList]) => {
+              if (Array.isArray(taskList)) {
+                taskList.forEach((task) => {
+                  if (task && task.selected) {
+                    tasks.push({
+                      categoryName,
+                      subcategoryName,
+                      taskName: task.name,
+                      taskOriginalId: task.id,
+                      taskOriginalStatus: task.status,
+                      taskOriginalPriority: task.priority,
+                      categoryColor,
+                    });
+                  }
                 });
               }
-            });
-          }
-        );
+            }
+          );
+        }
       }
     );
     return tasks;
@@ -136,7 +150,6 @@ const CreateProject = () => {
       [field]: value,
     }));
 
-    // Clear error when field is updated
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: null }));
     }
@@ -158,12 +171,11 @@ const CreateProject = () => {
         delete newSelectedTasks[categoryId];
       } else {
         newSelectedTasks[categoryId] = {};
-
         category.subcategories?.forEach((subcategory) => {
           newSelectedTasks[categoryId][subcategory.name] =
-            subcategory.tasks.map((taskName) => ({
-              name: taskName,
-              selected: true, // Default to selected
+            subcategory.tasks.map((taskObject) => ({
+              ...taskObject,
+              selected: true,
             }));
         });
       }
@@ -177,7 +189,8 @@ const CreateProject = () => {
 
   const handleTaskToggle = (categoryId, subcategoryName, taskIndex) => {
     setFormData((prev) => {
-      const newSelectedTasks = JSON.parse(JSON.stringify(prev.selectedTasks)); // Deep copy for safety
+      const newSelectedTasks = JSON.parse(JSON.stringify(prev.selectedTasks));
+
       if (
         newSelectedTasks[categoryId] &&
         newSelectedTasks[categoryId][subcategoryName] &&
@@ -199,7 +212,11 @@ const CreateProject = () => {
           newErrors.description = "Project description is required.";
         break;
       case 1:
-        if (categories.length > 0 && formData.selectedCategories.length === 0) {
+        if (
+          categories &&
+          categories.length > 0 &&
+          formData.selectedCategories.length === 0
+        ) {
           newErrors.categories = "Please select at least one category.";
         }
         break;
@@ -233,23 +250,25 @@ const CreateProject = () => {
   };
 
   const handleSubmit = async () => {
-    if (
-      !validateStep(0) ||
-      !validateStep(1) ||
-      !validateStep(2) ||
-      !validateStep(3)
-    ) {
-      for (let i = 0; i <= activeStep; i++) {
-        if (!validateStep(i)) {
-          setActiveStep(i);
-          return;
-        }
+    for (let i = 0; i <= activeStep; i++) {
+      if (!validateStep(i)) {
+        setActiveStep(i);
+        return;
       }
-      if (!validateStep(activeStep)) return;
     }
+    if (!validateStep(activeStep)) return;
 
     setIsSubmitting(true);
     setErrors((prev) => ({ ...prev, submission: null }));
+
+    const tasksToCreatePayload = selectedTasksPreview.map((taskPreview) => ({
+      name: taskPreview.taskName,
+      category: taskPreview.categoryName,
+      subcategory: taskPreview.subcategoryName,
+      status: taskPreview.taskOriginalStatus,
+      priority: taskPreview.taskOriginalPriority,
+      id: taskPreview.taskOriginalId,
+    }));
 
     const projectPayload = {
       name: formData.name,
@@ -257,31 +276,36 @@ const CreateProject = () => {
       status: formData.status,
       priority: formData.priority,
       dueDate: formData.dueDate ? formData.dueDate.toISOString() : null,
-
-      assignedTo: formData.assignedTo,
-
+      assignedTo: formData.assignedTo.map((emp) => emp.id),
       selectedCategories: formData.selectedCategories,
-      selectedTasks: formData.selectedTasks,
-
-      tasks: selectedTasksPreview.map((taskPreview) => ({
-        name: taskPreview.taskName,
-        category: taskPreview.categoryName,
-        subcategory: taskPreview.subcategoryName,
-        status: "pending",
-        priority: "medium",
-      })),
     };
 
     try {
-      await createProject(projectPayload);
-      navigate("/projects");
+      const newProjectId = await createProject(projectPayload);
+
+      if (newProjectId) {
+        for (const taskData of tasksToCreatePayload) {
+          const taskPayload = {
+            ...taskData,
+            projectId: newProjectId,
+          };
+          await createTask(taskPayload);
+        }
+        navigate("/projects");
+      } else {
+        console.error(
+          "Project creation succeeded but no ID was returned by createProject."
+        );
+        throw new Error(
+          "Project ID was not available after creation. Associated tasks could not be created."
+        );
+      }
     } catch (error) {
-      console.error("Error creating project:", error);
+      console.error("Error during project or task creation:", error);
       setErrors((prev) => ({
         ...prev,
         submission:
-          error.message ||
-          "Failed to create project. Please check the details and try again.",
+          error.message || "An unexpected error occurred. Please try again.",
       }));
     } finally {
       setIsSubmitting(false);
@@ -301,6 +325,7 @@ const CreateProject = () => {
               error={!!errors.name}
               helperText={errors.name}
               autoFocus
+              required
             />
             <TextField
               fullWidth
@@ -311,6 +336,7 @@ const CreateProject = () => {
               rows={4}
               error={!!errors.description}
               helperText={errors.description}
+              required
             />
             <Grid container spacing={3}>
               <Grid item xs={12} sm={6}>
@@ -385,7 +411,7 @@ const CreateProject = () => {
           </Box>
         );
       case 1:
-        if (categories.length === 0) {
+        if (!categories || categories.length === 0) {
           return (
             <Box
               sx={{
@@ -414,11 +440,13 @@ const CreateProject = () => {
                 fontWeight={600}
                 gutterBottom
               >
-                No Categories Found
+                {" "}
+                No Categories Found{" "}
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                {" "}
                 It looks like there are no categories set up yet. Please add
-                categories to proceed.
+                categories to proceed.{" "}
               </Typography>
               <Button
                 variant="contained"
@@ -432,29 +460,30 @@ const CreateProject = () => {
                   fontWeight: 600,
                 }}
               >
-                Add Category
+                {" "}
+                Add Category{" "}
               </Button>
             </Box>
           );
         }
-
         return (
           <Box>
             <Collapse in={!!errors.categories}>
               <Alert severity="error" sx={{ mb: 3 }}>
-                {errors.categories}
+                {" "}
+                {errors.categories}{" "}
               </Alert>
             </Collapse>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              {" "}
               Select categories for your project. Default tasks will be
-              included.
+              included. You can then deselect specific tasks.{" "}
             </Typography>
             <Grid container spacing={2}>
               {categories.map((category) => {
                 const isCategorySelected = formData.selectedCategories.includes(
                   category.id
                 );
-
                 return (
                   <Grid item xs={12} md={6} key={category.id}>
                     <Card
@@ -490,6 +519,10 @@ const CreateProject = () => {
                         >
                           <Checkbox
                             checked={isCategorySelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleCategoryToggle(category.id);
+                            }}
                             sx={{
                               color: category.color,
                               "&.Mui-checked": { color: category.color },
@@ -501,13 +534,19 @@ const CreateProject = () => {
                               height: 16,
                               borderRadius: "50%",
                               backgroundColor: category.color,
+                              flexShrink: 0,
                             }}
                           />
-                          <Typography variant="h6" fontWeight={600}>
-                            {category.name}
+                          <Typography variant="h6" fontWeight={600} noWrap>
+                            {" "}
+                            {category.name}{" "}
                           </Typography>
                         </Box>
-                        <Collapse in={isCategorySelected}>
+                        <Collapse
+                          in={isCategorySelected}
+                          timeout="auto"
+                          unmountOnExit
+                        >
                           <Box
                             sx={{
                               pl: isMobile ? 2 : 4,
@@ -524,7 +563,8 @@ const CreateProject = () => {
                                   color="text.primary"
                                   gutterBottom
                                 >
-                                  {subcategory.name}
+                                  {" "}
+                                  {subcategory.name}{" "}
                                 </Typography>
                                 <Box
                                   sx={{
@@ -533,53 +573,76 @@ const CreateProject = () => {
                                     gap: 1,
                                   }}
                                 >
-                                  {subcategory.tasks.map(
-                                    (taskName, taskIndex) => {
-                                      const isTaskSelected =
-                                        formData.selectedTasks[category.id]?.[
-                                          subcategory.name
-                                        ]?.[taskIndex]?.selected;
-                                      return (
-                                        <Chip
-                                          key={taskIndex}
-                                          label={taskName}
-                                          size="small"
-                                          variant={
-                                            isTaskSelected
-                                              ? "filled"
-                                              : "outlined"
-                                          }
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleTaskToggle(
-                                              category.id,
-                                              subcategory.name,
-                                              taskIndex
-                                            );
-                                          }}
-                                          sx={{
-                                            fontWeight: 500,
-                                            ...(isTaskSelected && {
-                                              backgroundColor: `${category.color}30`,
-                                              color: category.color,
-                                              borderColor: `${category.color}80`,
-                                              border: "1px solid",
-                                            }),
-                                            ...(!isTaskSelected && {
-                                              borderColor: `${category.color}80`,
-                                              color: `${category.color}`,
-                                            }),
-                                            "&:hover": {
-                                              backgroundColor: `${category.color}40` /* color: category.color (already set or inherits) */,
-                                            },
-                                          }}
-                                        />
-                                      );
-                                    }
-                                  )}
+                                  {formData.selectedTasks[category.id]?.[
+                                    subcategory.name
+                                  ]?.map((task, taskIndex) => (
+                                    <Chip
+                                      key={task.id || taskIndex}
+                                      label={task.name}
+                                      size="small"
+                                      variant={
+                                        task.selected ? "filled" : "outlined"
+                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleTaskToggle(
+                                          category.id,
+                                          subcategory.name,
+                                          taskIndex
+                                        );
+                                      }}
+                                      onDelete={
+                                        task.selected
+                                          ? (e) => {
+                                              e.stopPropagation();
+                                              handleTaskToggle(
+                                                category.id,
+                                                subcategory.name,
+                                                taskIndex
+                                              );
+                                            }
+                                          : undefined
+                                      }
+                                      deleteIcon={
+                                        task.selected ? (
+                                          <CheckCircle
+                                            sx={{
+                                              color: `${category.color} !important`,
+                                            }}
+                                          />
+                                        ) : undefined
+                                      }
+                                      sx={{
+                                        fontWeight: 500,
+                                        ...(task.selected && {
+                                          backgroundColor: `${category.color}30`,
+                                          color: category.color,
+                                          borderColor: `${category.color}80`,
+                                          border: "1px solid",
+                                        }),
+                                        ...(!task.selected && {
+                                          borderColor: `${category.color}80`,
+                                          color: `${category.color}`,
+                                        }),
+                                        "&:hover": {
+                                          backgroundColor: `${category.color}40`,
+                                        },
+                                      }}
+                                    />
+                                  ))}
                                 </Box>
                               </Box>
                             ))}
+                            {(!category.subcategories ||
+                              category.subcategories.length === 0) && (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                No subcategories or tasks defined for this
+                                category.
+                              </Typography>
+                            )}
                           </Box>
                         </Collapse>
                       </CardContent>
@@ -592,7 +655,7 @@ const CreateProject = () => {
         );
 
       case 2:
-        if (employees.length === 0) {
+        if (!employees || employees.length === 0) {
           return (
             <Box
               sx={{
@@ -625,8 +688,9 @@ const CreateProject = () => {
                 No Team Members Found{" "}
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                {" "}
                 No team members are available to assign. Please add employees
-                first.
+                first.{" "}
               </Typography>
               <Button
                 variant="contained"
@@ -640,7 +704,8 @@ const CreateProject = () => {
                   fontWeight: 600,
                 }}
               >
-                Add Team Member
+                {" "}
+                Add Team Member{" "}
               </Button>
             </Box>
           );
@@ -649,16 +714,18 @@ const CreateProject = () => {
           <Box>
             <Collapse in={!!errors.assignedTo}>
               <Alert severity="error" sx={{ mb: 3 }}>
-                {errors.assignedTo}
+                {" "}
+                {errors.assignedTo}{" "}
               </Alert>
             </Collapse>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-              Assign team members to this project.
+              {" "}
+              Assign team members to this project.{" "}
             </Typography>
             <Autocomplete
               multiple
               options={employees}
-              getOptionLabel={(option) => option.name || option.email}
+              getOptionLabel={(option) => option.name || option.email || ""}
               value={formData.assignedTo}
               onChange={(event, newValue) =>
                 handleInputChange("assignedTo", newValue)
@@ -674,6 +741,7 @@ const CreateProject = () => {
                     sx={{
                       borderColor: theme.palette.primary.main,
                       color: theme.palette.primary.main,
+                      fontWeight: 500,
                     }}
                   />
                 ))
@@ -698,12 +766,12 @@ const CreateProject = () => {
         const selectedPriority = priorityOptions.find(
           (p) => p.value === formData.priority
         );
-
         return (
           <Box>
             <Collapse in={!!errors.submission}>
               <Alert severity="error" sx={{ mb: 3 }}>
-                {errors.submission}
+                {" "}
+                {errors.submission}{" "}
               </Alert>
             </Collapse>
             <DatePicker
@@ -729,11 +797,11 @@ const CreateProject = () => {
               }}
             />
             <Divider sx={{ my: 3 }} />
-            <Typography variant="h6" gutterBottom>
-              Project Summary
+            <Typography variant="h6" gutterBottom fontWeight={600}>
+              {" "}
+              Project Summary{" "}
             </Typography>
             <Grid container spacing={3}>
-              {/* Project Details Summary Card */}
               <Grid item xs={12} md={6}>
                 <Paper
                   elevation={0}
@@ -751,10 +819,12 @@ const CreateProject = () => {
                     color="primary.main"
                     gutterBottom
                   >
-                    Project Details
+                    {" "}
+                    Project Details{" "}
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    <strong>Name:</strong> {formData.name}
+                    {" "}
+                    <strong>Name:</strong> {formData.name || "Not specified"}{" "}
                   </Typography>
                   <Typography
                     variant="body2"
@@ -765,16 +835,21 @@ const CreateProject = () => {
                       gap: 1,
                     }}
                   >
-                    <strong>Status:</strong>
-                    <Chip
-                      label={selectedStatus?.label}
-                      size="small"
-                      sx={{
-                        backgroundColor: `${selectedStatus?.color}40`,
-                        color: selectedStatus?.color,
-                        fontWeight: 600,
-                      }}
-                    />
+                    {" "}
+                    <strong>Status:</strong>{" "}
+                    {selectedStatus ? (
+                      <Chip
+                        label={selectedStatus.label}
+                        size="small"
+                        sx={{
+                          backgroundColor: `${selectedStatus.color}40`,
+                          color: selectedStatus.color,
+                          fontWeight: 600,
+                        }}
+                      />
+                    ) : (
+                      "N/A"
+                    )}{" "}
                   </Typography>
                   <Typography
                     variant="body2"
@@ -785,27 +860,31 @@ const CreateProject = () => {
                       gap: 1,
                     }}
                   >
-                    <strong>Priority:</strong>
-                    <Chip
-                      label={selectedPriority?.label}
-                      size="small"
-                      sx={{
-                        backgroundColor: `${selectedPriority?.color}40`,
-                        color: selectedPriority?.color,
-                        fontWeight: 600,
-                      }}
-                    />
+                    {" "}
+                    <strong>Priority:</strong>{" "}
+                    {selectedPriority ? (
+                      <Chip
+                        label={selectedPriority.label}
+                        size="small"
+                        sx={{
+                          backgroundColor: `${selectedPriority.color}40`,
+                          color: selectedPriority.color,
+                          fontWeight: 600,
+                        }}
+                      />
+                    ) : (
+                      "N/A"
+                    )}{" "}
                   </Typography>
                   {formData.dueDate && (
                     <Typography variant="body2">
+                      {" "}
                       <strong>Due Date:</strong>{" "}
-                      {new Date(formData.dueDate).toLocaleDateString()}
+                      {new Date(formData.dueDate).toLocaleDateString()}{" "}
                     </Typography>
                   )}
                 </Paper>
               </Grid>
-
-              {/* Team & Tasks Summary Card */}
               <Grid item xs={12} md={6}>
                 <Paper
                   elevation={0}
@@ -823,25 +902,27 @@ const CreateProject = () => {
                     color="secondary.main"
                     gutterBottom
                   >
-                    Team & Tasks
+                    {" "}
+                    Team & Tasks{" "}
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
+                    {" "}
                     <strong>Team Members:</strong> {formData.assignedTo.length}{" "}
-                    assigned
+                    assigned{" "}
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
+                    {" "}
                     <strong>Categories:</strong>{" "}
-                    {formData.selectedCategories.length} selected
+                    {formData.selectedCategories.length} selected{" "}
                   </Typography>
                   <Typography variant="body2">
+                    {" "}
                     <strong>Total Tasks:</strong> {selectedTasksPreview.length}{" "}
-                    tasks
+                    tasks selected{" "}
                   </Typography>
                 </Paper>
               </Grid>
             </Grid>
-
-            {/* Selected Tasks Preview */}
             {selectedTasksPreview.length > 0 && (
               <Box sx={{ mt: 4 }}>
                 <Typography
@@ -850,7 +931,8 @@ const CreateProject = () => {
                   fontWeight={600}
                   gutterBottom
                 >
-                  Selected Tasks ({selectedTasksPreview.length})
+                  {" "}
+                  Selected Tasks ({selectedTasksPreview.length}){" "}
                 </Typography>
                 <Paper
                   variant="outlined"
@@ -868,7 +950,7 @@ const CreateProject = () => {
                 >
                   {selectedTasksPreview.map((task, index) => (
                     <Chip
-                      key={index}
+                      key={task.taskOriginalId || index}
                       label={`${task.categoryName}: ${task.taskName}`}
                       size="small"
                       sx={{
@@ -886,13 +968,13 @@ const CreateProject = () => {
         );
       }
       default:
-        return null;
+        return <Typography>Unknown step</Typography>;
     }
   };
 
   return (
     <Fade in={true} timeout={600}>
-      <Box>
+      <Box sx={{ p: isMobile ? 1 : 2 }}>
         <Box
           sx={{
             display: "flex",
@@ -905,7 +987,7 @@ const CreateProject = () => {
         >
           <Box>
             <Typography
-              variant="h4"
+              variant={isMobile ? "h5" : "h4"}
               component="h1"
               gutterBottom
               sx={{
@@ -916,10 +998,12 @@ const CreateProject = () => {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              Create New Project
+              {" "}
+              Create New Project{" "}
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Follow the steps to setup and launch your new project.
+              {" "}
+              Follow the steps to setup and launch your new project.{" "}
             </Typography>
           </Box>
           <Button
@@ -940,7 +1024,8 @@ const CreateProject = () => {
               },
             }}
           >
-            Back to Projects
+            {" "}
+            Back to Projects{" "}
           </Button>
         </Box>
         <Paper
@@ -956,11 +1041,11 @@ const CreateProject = () => {
         >
           <Stepper
             activeStep={activeStep}
-            alternativeLabel={isMobile ? false : true}
+            alternativeLabel={!isMobile}
             orientation={isMobile ? "vertical" : "horizontal"}
           >
-            {steps.map((step) => (
-              <Step key={step.label}>
+            {steps.map((step, index) => (
+              <Step key={step.label} completed={activeStep > index}>
                 <StepLabel
                   StepIconComponent={(props) => (
                     <Box
@@ -993,7 +1078,8 @@ const CreateProject = () => {
                   <Typography>{step.label}</Typography>
                   {!isMobile && (
                     <Typography variant="caption" color="textSecondary">
-                      {step.description}
+                      {" "}
+                      {step.description}{" "}
                     </Typography>
                   )}
                 </StepLabel>
@@ -1013,16 +1099,16 @@ const CreateProject = () => {
         >
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" gutterBottom fontWeight={600}>
-              {steps[activeStep].label}
+              {" "}
+              {steps[activeStep].label}{" "}
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              {steps[activeStep].description}
+              {" "}
+              {steps[activeStep].description}{" "}
             </Typography>
           </Box>
           <Divider sx={{ mb: 4 }} />
-
           {renderStepContent(activeStep)}
-
           <Box
             sx={{
               display: "flex",
@@ -1035,9 +1121,17 @@ const CreateProject = () => {
             <Button
               onClick={handleBack}
               disabled={activeStep === 0}
-              sx={{ visibility: activeStep === 0 ? "hidden" : "visible" }}
+              sx={{
+                visibility: activeStep === 0 ? "hidden" : "visible",
+                px: 3,
+                py: 1.2,
+                borderRadius: 2,
+                textTransform: "none",
+                fontWeight: 600,
+              }}
             >
-              Back
+              {" "}
+              Back{" "}
             </Button>
             <Box>
               {activeStep === steps.length - 1 ? (
@@ -1071,7 +1165,8 @@ const CreateProject = () => {
                     fontWeight: 600,
                   }}
                 >
-                  Continue
+                  {" "}
+                  Continue{" "}
                 </Button>
               )}
             </Box>

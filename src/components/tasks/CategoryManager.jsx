@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -55,6 +55,19 @@ const colorOptions = [
   "#E0E0E0",
 ];
 
+const taskStatusOptions = [
+  { value: "pending", label: "Pending", color: "#64B5F6" },
+  { value: "in-progress", label: "In Progress", color: "#FFB74D" },
+  { value: "completed", label: "Completed", color: "#81C784" },
+  { value: "blocked", label: "Blocked", color: "#F44336" },
+];
+
+const taskPriorityOptions = [
+  { value: "low", label: "Low", color: "#6BBF6B" },
+  { value: "medium", label: "Medium", color: "#FFD700" },
+  { value: "high", label: "High", color: "#DC3545" },
+];
+
 const CategoryManager = () => {
   const theme = useTheme();
   const {
@@ -73,27 +86,93 @@ const CategoryManager = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
 
-  const [newTasks, setNewTasks] = useState({});
+  const [newTaskValues, setNewTaskValues] = useState({});
 
-  const handleNewTaskInputChange = (index, value) => {
-    setNewTasks((prev) => ({ ...prev, [index]: value }));
+  const [formData, setFormData] = useState({
+    name: "",
+    color: "#8B7EC8",
+    description: "",
+    subcategories: [],
+  });
+
+  const ensureTaskObject = (task, index) => {
+    if (typeof task === "string") {
+      return {
+        id: `task_${Date.now()}_${index}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`,
+        name: task,
+        status: taskStatusOptions[0].value,
+        priority: taskPriorityOptions[0].value,
+      };
+    }
+    return {
+      id:
+        task.id ||
+        `task_${Date.now()}_${index}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`,
+      name: task.name,
+      status: task.status || taskStatusOptions[0].value,
+      priority: task.priority || taskPriorityOptions[0].value,
+      ...task,
+    };
+  };
+
+  useEffect(() => {
+    const initialValues = {};
+    formData.subcategories?.forEach((_, index) => {
+      initialValues[index] = {
+        name: "",
+        status: taskStatusOptions[0].value,
+        priority: taskPriorityOptions[0].value,
+      };
+    });
+    setNewTaskValues(initialValues);
+  }, [formData.subcategories]);
+
+  const handleNewTaskValueChange = (subIndex, field, value) => {
+    setNewTaskValues((prev) => ({
+      ...prev,
+      [subIndex]: {
+        ...(prev[subIndex] || {
+          name: "",
+          status: taskStatusOptions[0].value,
+          priority: taskPriorityOptions[0].value,
+        }),
+        [field]: value,
+      },
+    }));
   };
 
   const handleAddTask = (subIndex) => {
-    const newTask = newTasks[subIndex]?.trim();
-    if (!newTask) return;
+    const taskDetails = newTaskValues[subIndex];
+    if (!taskDetails || !taskDetails.name?.trim()) return;
+
+    const newTaskObject = {
+      id: String(Date.now() + Math.random()), // Simple unique ID
+      name: taskDetails.name.trim(),
+      status: taskDetails.status,
+      priority: taskDetails.priority,
+    };
 
     setFormData((prev) => {
       const updatedSubcategories = [...prev.subcategories];
       const currentTasks = updatedSubcategories[subIndex].tasks || [];
       updatedSubcategories[subIndex] = {
         ...updatedSubcategories[subIndex],
-        tasks: [...currentTasks, newTask],
+        tasks: [...currentTasks, newTaskObject],
       };
       return { ...prev, subcategories: updatedSubcategories };
     });
 
-    setNewTasks((prev) => ({ ...prev, [subIndex]: "" }));
+    setNewTaskValues((prev) => ({
+      ...prev,
+      [subIndex]: {
+        ...prev[subIndex],
+        name: "", // Reset name, keep status/priority for next task
+      },
+    }));
   };
 
   const handleRemoveTask = (subIndex, taskIndex) => {
@@ -108,34 +187,23 @@ const CategoryManager = () => {
     });
   };
 
-  const [formData, setFormData] = useState({
-    name: "",
-    color: "#8B7EC8",
-    description: "",
-  });
-
   const handleOpenDialog = (category = null) => {
     setSelectedCategory(category);
+    const initialSubcategories =
+      category?.subcategories?.map((sub) => ({
+        name: sub.name,
+        tasks:
+          sub.tasks?.map((task, taskIdx) => ensureTaskObject(task, taskIdx)) ||
+          [],
+      })) || [];
+
     setFormData({
       name: category?.name || "",
       color: category?.color || "#8B7EC8",
       description: category?.description || "",
-      subcategories:
-        category?.subcategories?.map((sub) => ({
-          name: sub.name,
-          tasks: sub.tasks || [],
-        })) || [],
+      subcategories: initialSubcategories,
     });
-
-    // Initialize new tasks state for each subcategory
-    const initialNewTasks = {};
-    if (category?.subcategories) {
-      category.subcategories.forEach((_, idx) => {
-        initialNewTasks[idx] = "";
-      });
-    }
-    setNewTasks(initialNewTasks);
-
+    // setNewTaskValues will be set by useEffect based on formData.subcategories
     setDialogOpen(true);
   };
 
@@ -146,16 +214,29 @@ const CategoryManager = () => {
       name: "",
       color: "#8B7EC8",
       description: "",
+      subcategories: [],
     });
+    setNewTaskValues({});
   };
 
   const handleSaveCategory = async () => {
     try {
       setActionLoading(true);
+      // Ensure all tasks in formData are proper objects before saving
+      const categoryDataToSave = {
+        ...formData,
+        subcategories: formData.subcategories.map((sub) => ({
+          ...sub,
+          tasks: sub.tasks.map((task, taskIdx) =>
+            ensureTaskObject(task, taskIdx)
+          ),
+        })),
+      };
+
       if (selectedCategory) {
-        await updateCategory(selectedCategory.id, formData);
+        await updateCategory(selectedCategory.id, categoryDataToSave);
       } else {
-        await createCategory(formData);
+        await createCategory(categoryDataToSave);
       }
       handleCloseDialog();
     } catch (error) {
@@ -365,10 +446,12 @@ const CategoryManager = () => {
                   sx={{ color: "#2196F3" }}
                 >
                   {Math.round(
-                    categories.reduce(
-                      (total, cat) => total + getTotalTasks(cat),
-                      0
-                    ) / Math.max(categories.length, 1)
+                    categories.length > 0
+                      ? categories.reduce(
+                          (total, cat) => total + getTotalTasks(cat),
+                          0
+                        ) / categories.length
+                      : 0
                   )}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -497,7 +580,7 @@ const CategoryManager = () => {
                             label={`${getTotalTasks(category)} tasks`}
                             size="small"
                             sx={{
-                              backgroundColor: `${category.color}20`,
+                              backgroundColor: `${category.color}20`, // Opacity for background
                               color: category.color,
                             }}
                           />
@@ -546,19 +629,25 @@ const CategoryManager = () => {
                                     gap: 1,
                                   }}
                                 >
-                                  {subcategory.tasks.map((task, taskIndex) => (
-                                    <Chip
-                                      key={taskIndex}
-                                      label={task}
-                                      size="small"
-                                      variant="outlined"
-                                      sx={{
-                                        borderColor: `${category.color}`,
-                                        color: category.color,
-                                        backgroundColor: `${category.color}10`,
-                                      }}
-                                    />
-                                  ))}
+                                  {subcategory.tasks.map((task, taskIndex) => {
+                                    const statusColor =
+                                      taskStatusOptions.find(
+                                        (s) => s.value === task.status
+                                      )?.color || category.color;
+                                    return (
+                                      <Chip
+                                        key={task.id || taskIndex} // task.id is preferred
+                                        label={task.name}
+                                        size="small"
+                                        variant="outlined"
+                                        sx={{
+                                          borderColor: statusColor,
+                                          color: statusColor,
+                                          backgroundColor: `${statusColor}1A`, // Lighter background with opacity
+                                        }}
+                                      />
+                                    );
+                                  })}
                                 </Box>
                               )}
                           </CardContent>
@@ -608,7 +697,7 @@ const CategoryManager = () => {
         <Dialog
           open={dialogOpen}
           onClose={handleCloseDialog}
-          maxWidth="sm"
+          maxWidth="md"
           fullWidth
         >
           <DialogTitle>
@@ -626,22 +715,30 @@ const CategoryManager = () => {
                 value={formData.name}
                 onChange={(e) => {
                   const selectedName = e.target.value;
-                  const selectedCat = defaultCategories.find(
+                  const selectedCatDef = defaultCategories.find(
                     (cat) => cat.name === selectedName
                   );
                   setFormData((prev) => ({
                     ...prev,
                     name: selectedName,
-                    color: selectedCat?.color || "",
-                    description: selectedCat?.description || "",
-                    subcategories: [],
+                    color: selectedCatDef?.color || prev.color || "#8B7EC8",
+                    description: selectedCatDef?.description || "",
+                    subcategories:
+                      prev.name === selectedName
+                        ? prev.subcategories
+                        : selectedCatDef?.subcategories?.map((sub) => ({
+                            name: sub.name,
+                            tasks:
+                              sub.tasks?.map((t, idx) =>
+                                ensureTaskObject(t, idx)
+                              ) || [],
+                          })) || [],
                   }));
-                  setNewTasks({});
                 }}
                 label="Category Name"
               >
                 {defaultCategories.map((cat) => (
-                  <MenuItem key={cat.id} value={cat.name}>
+                  <MenuItem key={cat.id || cat.name} value={cat.name}>
                     {cat.name}
                   </MenuItem>
                 ))}
@@ -658,35 +755,56 @@ const CategoryManager = () => {
                   multiple
                   value={formData.subcategories?.map((s) => s.name) || []}
                   onChange={(e) => {
-                    const selectedCategory = defaultCategories.find(
+                    const selectedCategoryDefinition = defaultCategories.find(
                       (cat) => cat.name === formData.name
                     );
-                    const selectedNames = e.target.value;
-                    const selectedSubs =
-                      selectedCategory?.subcategories?.filter((sub) =>
-                        selectedNames.includes(sub.name)
-                      ) || [];
+                    const selectedSubNames = e.target.value;
 
-                    // Preserve existing tasks when selecting/deselecting subcategories
+                    const newSubcategories =
+                      selectedCategoryDefinition?.subcategories
+                        ?.filter((subDef) =>
+                          selectedSubNames.includes(subDef.name)
+                        )
+                        .map((subDef) => {
+                          const existingSub = formData.subcategories.find(
+                            (fs) => fs.name === subDef.name
+                          );
+                          if (existingSub) {
+                            // Preserve existing tasks if subcategory was already selected
+                            return {
+                              ...existingSub,
+                              tasks:
+                                existingSub.tasks?.map((t, taskIdx) =>
+                                  ensureTaskObject(t, taskIdx)
+                                ) || [],
+                            };
+                          }
+                          return {
+                            name: subDef.name,
+                            tasks:
+                              subDef.tasks?.map((task, taskIdx) =>
+                                ensureTaskObject(task, taskIdx)
+                              ) || [],
+                          };
+                        }) || [];
+
+                    // Handle subcategories not in default list (custom ones added previously)
+                    const customExistingSubcategories =
+                      formData.subcategories.filter(
+                        (fs) =>
+                          selectedSubNames.includes(fs.name) &&
+                          !selectedCategoryDefinition?.subcategories.some(
+                            (sds) => sds.name === fs.name
+                          )
+                      );
+
                     setFormData((prev) => ({
                       ...prev,
-                      subcategories: selectedSubs.map((s) => ({
-                        ...s,
-                        tasks:
-                          // Keep existing tasks if the subcategory was already selected
-                          prev.subcategories?.find((p) => p.name === s.name)
-                            ?.tasks ||
-                          // Or initialize with empty array if it's a new selection
-                          [],
-                      })),
+                      subcategories: [
+                        ...newSubcategories,
+                        ...customExistingSubcategories,
+                      ],
                     }));
-
-                    // Initialize new tasks state for each subcategory
-                    const initialNewTasks = {};
-                    selectedSubs.forEach((_, idx) => {
-                      initialNewTasks[idx] = "";
-                    });
-                    setNewTasks(initialNewTasks);
                   }}
                   renderValue={(selected) => selected.join(", ")}
                 >
@@ -710,8 +828,8 @@ const CategoryManager = () => {
                 sx={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: 2,
-                  maxHeight: "30vh",
+                  gap: 3,
+                  maxHeight: "40vh",
                   overflowY: "auto",
                   pr: 1,
                   mb: 3,
@@ -719,12 +837,16 @@ const CategoryManager = () => {
               >
                 {formData.subcategories.map((sub, subIndex) => (
                   <Paper
-                    key={subIndex}
+                    key={sub.name || subIndex}
                     variant="outlined"
                     sx={{ p: 2, borderRadius: 2 }}
                   >
-                    <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                      {sub.name}
+                    <Typography
+                      variant="subtitle1"
+                      fontWeight={500}
+                      sx={{ mb: 2 }}
+                    >
+                      Tasks for: {sub.name}
                     </Typography>
 
                     <Box
@@ -735,44 +857,146 @@ const CategoryManager = () => {
                         mb: sub.tasks?.length > 0 ? 2 : 0,
                       }}
                     >
-                      {sub.tasks?.map((task, taskIndex) => (
-                        <Chip
-                          key={taskIndex}
-                          label={task}
-                          onDelete={() => handleRemoveTask(subIndex, taskIndex)}
-                          disabled={actionLoading}
-                        />
-                      ))}
+                      {sub.tasks?.map((task, taskIndex) => {
+                        const statusColor =
+                          taskStatusOptions.find((s) => s.value === task.status)
+                            ?.color || theme.palette.grey[700];
+                        return (
+                          <Chip
+                            key={task.id || taskIndex}
+                            label={task.name}
+                            onDelete={() =>
+                              handleRemoveTask(subIndex, taskIndex)
+                            }
+                            disabled={actionLoading}
+                            sx={{
+                              borderColor: statusColor,
+                              color: statusColor,
+                              backgroundColor: `${statusColor}1A`,
+                              fontWeight: 500,
+                            }}
+                          />
+                        );
+                      })}
                     </Box>
 
-                    <Box sx={{ display: "flex", gap: 1 }}>
-                      <Input
-                        placeholder="Add a new task..."
-                        fullWidth
-                        value={newTasks[subIndex] || ""}
-                        onChange={(e) =>
-                          handleNewTaskInputChange(subIndex, e.target.value)
-                        }
-                        onKeyPress={(e) =>
-                          e.key === "Enter" && handleAddTask(subIndex)
-                        }
-                        disabled={actionLoading}
-                      />
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={() => handleAddTask(subIndex)}
-                        disabled={actionLoading || !newTasks[subIndex]}
-                      >
-                        Add
-                      </Button>
-                    </Box>
+                    <Grid container spacing={2} alignItems="flex-end">
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label="New Task Name"
+                          fullWidth
+                          variant="standard"
+                          value={newTaskValues[subIndex]?.name || ""}
+                          onChange={(e) =>
+                            handleNewTaskValueChange(
+                              subIndex,
+                              "name",
+                              e.target.value
+                            )
+                          }
+                          onKeyPress={(e) =>
+                            e.key === "Enter" && handleAddTask(subIndex)
+                          }
+                          disabled={actionLoading}
+                        />
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <FormControl fullWidth variant="standard">
+                          <InputLabel id={`task-status-label-${subIndex}`}>
+                            Status
+                          </InputLabel>
+                          <Select
+                            labelId={`task-status-label-${subIndex}`}
+                            value={
+                              newTaskValues[subIndex]?.status ||
+                              taskStatusOptions[0].value
+                            }
+                            onChange={(e) =>
+                              handleNewTaskValueChange(
+                                subIndex,
+                                "status",
+                                e.target.value
+                              )
+                            }
+                            disabled={actionLoading}
+                          >
+                            {taskStatusOptions.map((opt) => (
+                              <MenuItem key={opt.value} value={opt.value}>
+                                <Box
+                                  component="span"
+                                  sx={{
+                                    width: 12,
+                                    height: 12,
+                                    borderRadius: "50%",
+                                    backgroundColor: opt.color,
+                                    mr: 1,
+                                    display: "inline-block",
+                                  }}
+                                />
+                                {opt.label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={6} sm={3}>
+                        <FormControl fullWidth variant="standard">
+                          <InputLabel id={`task-priority-label-${subIndex}`}>
+                            Priority
+                          </InputLabel>
+                          <Select
+                            labelId={`task-priority-label-${subIndex}`}
+                            value={
+                              newTaskValues[subIndex]?.priority ||
+                              taskPriorityOptions[0].value
+                            }
+                            onChange={(e) =>
+                              handleNewTaskValueChange(
+                                subIndex,
+                                "priority",
+                                e.target.value
+                              )
+                            }
+                            disabled={actionLoading}
+                          >
+                            {taskPriorityOptions.map((opt) => (
+                              <MenuItem key={opt.value} value={opt.value}>
+                                <Box
+                                  component="span"
+                                  sx={{
+                                    width: 12,
+                                    height: 12,
+                                    borderRadius: "50%",
+                                    backgroundColor: opt.color,
+                                    mr: 1,
+                                    display: "inline-block",
+                                  }}
+                                />
+                                {opt.label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                    </Grid>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => handleAddTask(subIndex)}
+                      disabled={
+                        actionLoading || !newTaskValues[subIndex]?.name?.trim()
+                      }
+                      sx={{ mt: 2 }}
+                      startIcon={<Add />}
+                    >
+                      Add Task
+                    </Button>
                   </Paper>
                 ))}
               </Box>
             )}
-            <Typography variant="subtitle2" gutterBottom>
-              Color
+            <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>
+              Category Color
             </Typography>
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 3 }}>
               {colorOptions.map((color) => (
@@ -813,17 +1037,26 @@ const CategoryManager = () => {
               multiline
               rows={3}
               disabled={actionLoading}
+              variant="outlined"
             />
           </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseDialog} disabled={actionLoading}>
+          <DialogActions sx={{ p: 2 }}>
+            <Button
+              onClick={handleCloseDialog}
+              disabled={actionLoading}
+              color="inherit"
+            >
               Cancel
             </Button>
             <Button
               variant="contained"
               onClick={handleSaveCategory}
               disabled={actionLoading || !formData.name.trim()}
-              startIcon={actionLoading ? <CircularProgress size={20} /> : null}
+              startIcon={
+                actionLoading ? (
+                  <CircularProgress size={20} color="inherit" />
+                ) : null
+              }
             >
               {actionLoading
                 ? "Saving..."
