@@ -1,3 +1,5 @@
+// src/App.jsx
+
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -13,6 +15,7 @@ import theme from "./theme/theme";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import Login from "./components/auth/Login";
 import Layout from "./components/layout/Layout";
+import Dashboard from "./components/dashboard/Dashboard";
 import ProjectList from "./components/projects/ProjectList";
 import ProjectDetails from "./components/projects/ProjectDetails";
 import CreateProject from "./components/projects/CreateProject";
@@ -41,7 +44,8 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<Navigate to="/projects" replace />} />
+                  <Route index element={<Navigate to="/dashboard" replace />} />
+                  <Route path="dashboard" element={<Dashboard />} />
                   <Route path="projects" element={<ProjectList />} />
                   <Route path="projects/create" element={<CreateProject />} />
                   <Route path="projects/:id" element={<ProjectDetails />} />
@@ -56,7 +60,7 @@ function App() {
                   />
                   <Route
                     path="*"
-                    element={<Navigate to="/projects" replace />}
+                    element={<Navigate to="/dashboard" replace />}
                   />
                 </Route>
                 <Route path="*" element={<Navigate to="/login" replace />} />

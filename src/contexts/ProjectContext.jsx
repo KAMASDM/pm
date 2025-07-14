@@ -1,4 +1,6 @@
-import React, { createContext, useState, useEffect } from "react";
+// src/contexts/ProjectContext.jsx
+
+import React, { createContext, useState, useEffect, useCallback } from "react";
 import { firebaseService } from "../services/firebase";
 import useAuth from "../hooks/useAuth";
 
@@ -8,6 +10,7 @@ export const ProjectProvider = ({ children }) => {
   const { currentUser } = useAuth();
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [milestones, setMilestones] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +46,20 @@ export const ProjectProvider = ({ children }) => {
       console.error("Error loading tasks:", error);
     }
   };
+
+  const loadMilestones = useCallback(async (projectId) => {
+    try {
+      setLoading(true);
+      const milestonesData = await firebaseService.getMilestonesByProject(
+        projectId
+      );
+      setMilestones(milestonesData);
+    } catch (error) {
+      console.error("Error loading milestones:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const loadEmployees = async () => {
     try {
@@ -101,6 +118,40 @@ export const ProjectProvider = ({ children }) => {
       await loadProjects();
     } catch (error) {
       setError("Failed to delete project");
+      throw error;
+    }
+  };
+
+  const createMilestone = async (milestoneData) => {
+    try {
+      const milestoneId = await firebaseService.createMilestone({
+        ...milestoneData,
+        createdBy: currentUser.uid,
+      });
+      await loadMilestones(milestoneData.projectId);
+      return milestoneId;
+    } catch (error) {
+      setError("Failed to create milestone");
+      throw error;
+    }
+  };
+
+  const updateMilestone = async (milestoneId, updateData, projectId) => {
+    try {
+      await firebaseService.updateMilestone(milestoneId, updateData);
+      await loadMilestones(projectId);
+    } catch (error) {
+      setError("Failed to update milestone");
+      throw error;
+    }
+  };
+
+  const deleteMilestone = async (milestoneId, projectId) => {
+    try {
+      await firebaseService.deleteMilestone(milestoneId);
+      await loadMilestones(projectId);
+    } catch (error) {
+      setError("Failed to delete milestone");
       throw error;
     }
   };
@@ -233,6 +284,13 @@ export const ProjectProvider = ({ children }) => {
     return tasks.filter((task) => task.status === status);
   };
 
+  const getTasksByMilestone = useCallback(
+    (milestoneId) => {
+      return tasks.filter((task) => task.milestoneId === milestoneId);
+    },
+    [tasks]
+  );
+
   const getProjectProgress = (projectId) => {
     const projectTasks = getTasksByProject(projectId);
     if (projectTasks.length === 0) return 0;
@@ -249,37 +307,33 @@ export const ProjectProvider = ({ children }) => {
     employees,
     loading,
     error,
-
+    milestones,
+    loadMilestones,
+    createMilestone,
+    updateMilestone,
+    deleteMilestone,
+    getTasksByMilestone,
     createProject,
     updateProject,
     deleteProject,
-
     getProjectById,
     getProjectProgress,
     getProjectsByEmployee,
-
     createTask,
     updateTask,
     deleteTask,
-
     getTasksByProject,
     getTasksByEmployee,
     getTasksByStatus,
-
     createEmployee,
     updateEmployee,
     deleteEmployee,
-
     createCategory,
     updateCategory,
     deleteCategory,
-
     loadProjects,
-
     loadTasks,
-
     loadEmployees,
-
     loadCategories,
   };
 
