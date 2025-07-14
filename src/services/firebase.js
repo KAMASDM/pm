@@ -1,3 +1,5 @@
+// src/services/firebase.js
+
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
@@ -19,6 +21,7 @@ import {
   onSnapshot,
   serverTimestamp,
   getDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -62,6 +65,7 @@ export const logOut = async () => {
 };
 
 export const firebaseService = {
+  // Projects
   async createProject(projectData) {
     try {
       const docRef = await addDoc(collection(db, "projects"), {
@@ -139,6 +143,72 @@ export const firebaseService = {
       await deleteDoc(doc(db, "projects", projectId));
     } catch (error) {
       console.error("Error deleting project:", error);
+      throw error;
+    }
+  },
+
+  // Milestones
+  async createMilestone(milestoneData) {
+    try {
+      const docRef = await addDoc(collection(db, "milestones"), {
+        ...milestoneData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating milestone:", error);
+      throw error;
+    }
+  },
+
+  async getMilestonesByProject(projectId) {
+    try {
+      const q = query(
+        collection(db, "milestones"),
+        where("projectId", "==", projectId),
+        orderBy("createdAt", "asc")
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+    } catch (error) {
+      console.error("Error getting milestones:", error);
+      throw error;
+    }
+  },
+
+  async updateMilestone(milestoneId, updateData) {
+    try {
+      const milestoneRef = doc(db, "milestones", milestoneId);
+      await updateDoc(milestoneRef, {
+        ...updateData,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Error updating milestone:", error);
+      throw error;
+    }
+  },
+
+  async deleteMilestone(milestoneId) {
+    try {
+      const tasksQuery = query(
+        collection(db, "tasks"),
+        where("milestoneId", "==", milestoneId)
+      );
+      const tasksSnapshot = await getDocs(tasksQuery);
+      const batch = writeBatch(db);
+      tasksSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+
+      await deleteDoc(doc(db, "milestones", milestoneId));
+    } catch (error) {
+      console.error("Error deleting milestone:", error);
       throw error;
     }
   },

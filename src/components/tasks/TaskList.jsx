@@ -1,3 +1,5 @@
+// src/components/tasks/TaskList.jsx
+
 import React, { useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -18,7 +20,6 @@ import {
   LinearProgress,
   List,
   ListItem,
-  ListItemIcon,
   ListItemText,
   ListItemSecondaryAction,
   Checkbox,
@@ -55,8 +56,11 @@ import {
   NavigateNext,
   ArrowBack as ArrowBackIcon,
   Save,
+  ViewList,
+  ViewKanban,
 } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
+import TaskCard from "./TaskCard";
 
 const statusOptionsForFilter = [
   { value: "all", label: "All Tasks", color: "#9E9E9E" },
@@ -143,6 +147,7 @@ const TaskList = () => {
     saving: false,
     deleting: false,
   });
+  const [viewMode, setViewMode] = useState("list");
 
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
@@ -771,20 +776,30 @@ const TaskList = () => {
               Manage and track all your tasks across projects.
             </Typography>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => navigate("/tasks/create")}
-            sx={{
-              borderRadius: 2,
-              px: 3,
-              py: 1.5,
-              textTransform: "none",
-              fontWeight: 600,
-            }}
-          >
-            Create Task
-          </Button>
+          <Box sx={{ display: "flex", alignItems: "center" }}>
+            <IconButton onClick={() => setViewMode("list")}>
+              <ViewList color={viewMode === "list" ? "primary" : "inherit"} />
+            </IconButton>
+            <IconButton onClick={() => setViewMode("kanban")}>
+              <ViewKanban
+                color={viewMode === "kanban" ? "primary" : "inherit"}
+              />
+            </IconButton>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => navigate("/tasks/create")}
+              sx={{
+                borderRadius: 2,
+                px: 3,
+                py: 1.5,
+                textTransform: "none",
+                fontWeight: 600,
+              }}
+            >
+              Create Task
+            </Button>
+          </Box>
         </Box>
         <Paper
           elevation={0}
@@ -1062,168 +1077,218 @@ const TaskList = () => {
             </Grid>
           </Grid>
         </Paper>
-        {filteredAndSortedTasks.length === 0 ? (
-          <Paper
-            elevation={0}
-            sx={{
-              p: 8,
-              textAlign: "center",
-              borderRadius: 3,
-              background:
-                "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
-              border: "1px solid rgba(139, 126, 200, 0.1)",
-            }}
-          >
-            <Assignment
+        {viewMode === "list" ? (
+          filteredAndSortedTasks.length === 0 ? (
+            <Paper
+              elevation={0}
               sx={{
-                fontSize: 60,
-                color: "#8E80B1",
-                mb: 2,
-                opacity: 0.7,
+                p: 8,
+                textAlign: "center",
+                borderRadius: 3,
+                background:
+                  "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
+                border: "1px solid rgba(139, 126, 200, 0.1)",
               }}
-            />
-            <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-              {searchTerm ||
-              filterStatus !== "all" ||
-              filterPriority !== "all" ||
-              filterProject !== "all"
-                ? "No tasks match your filters"
-                : "No tasks yet"}{" "}
-            </Typography>
-            <Typography
-              variant="body1"
-              color="text.secondary"
-              sx={{ mb: 3, maxWidth: 400, mx: "auto" }}
             >
-              {searchTerm ||
-              filterStatus !== "all" ||
-              filterPriority !== "all" ||
-              filterProject !== "all"
-                ? "Try adjusting your search or filter criteria."
-                : "Get started by creating a new task."}{" "}
-            </Typography>
-            {!searchTerm &&
-              filterStatus === "all" &&
-              filterPriority === "all" &&
-              filterProject === "all" && (
-                <Button
-                  variant="contained"
-                  startIcon={<Add />}
-                  onClick={() => navigate("/tasks/create")}
-                  sx={{
-                    borderRadius: 2,
-                    px: 4,
-                    py: 1.5,
-                    textTransform: "none",
-                    fontWeight: 600,
-                  }}
-                >
-                  Create Task
-                </Button>
-              )}
-          </Paper>
-        ) : (
-          <List sx={{ p: 0 }}>
-            {filteredAndSortedTasks.map((task) => (
-              <ListItem
-                key={task.id}
-                sx={(theme) => ({
-                  p: 3,
-                  cursor: "pointer",
-                  background:
-                    "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 2,
-                  mx: 2,
+              <Assignment
+                sx={{
+                  fontSize: 60,
+                  color: "#8E80B1",
                   mb: 2,
-                  opacity: submittingState.updating === task.id ? 0.7 : 1,
-                  "&:hover": {
-                    backgroundColor: "rgba(139, 126, 200, 0.08)",
-                  },
-                })}
+                  opacity: 0.7,
+                }}
+              />
+              <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+                {searchTerm ||
+                filterStatus !== "all" ||
+                filterPriority !== "all" ||
+                filterProject !== "all"
+                  ? "No tasks match your filters"
+                  : "No tasks yet"}{" "}
+              </Typography>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                sx={{ mb: 3, maxWidth: 400, mx: "auto" }}
               >
-                <ListItemText
-                  primary={
-                    <Typography
-                      variant="body1"
-                      fontWeight={600}
-                      sx={{
-                        textDecoration:
-                          task.status === "completed" ? "line-through" : "none",
-                        color:
-                          task.status === "completed"
-                            ? "text.secondary"
-                            : "text.primary",
-                      }}
-                    >
-                      {task.name}
-                    </Typography>
-                  }
-                  secondary={
-                    <>
+                {searchTerm ||
+                filterStatus !== "all" ||
+                filterPriority !== "all" ||
+                filterProject !== "all"
+                  ? "Try adjusting your search or filter criteria."
+                  : "Get started by creating a new task."}{" "}
+              </Typography>
+              {!searchTerm &&
+                filterStatus === "all" &&
+                filterPriority === "all" &&
+                filterProject === "all" && (
+                  <Button
+                    variant="contained"
+                    startIcon={<Add />}
+                    onClick={() => navigate("/tasks/create")}
+                    sx={{
+                      borderRadius: 2,
+                      px: 4,
+                      py: 1.5,
+                      textTransform: "none",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Create Task
+                  </Button>
+                )}
+            </Paper>
+          ) : (
+            <List sx={{ p: 0 }}>
+              {filteredAndSortedTasks.map((task) => (
+                <ListItem
+                  key={task.id}
+                  sx={(theme) => ({
+                    p: 3,
+                    cursor: "pointer",
+                    background:
+                      "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: 2,
+                    mx: 2,
+                    mb: 2,
+                    opacity: submittingState.updating === task.id ? 0.7 : 1,
+                    "&:hover": {
+                      backgroundColor: "rgba(139, 126, 200, 0.08)",
+                    },
+                  })}
+                >
+                  <ListItemText
+                    primary={
                       <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        noWrap
-                        sx={{ mb: 0.5 }}
-                      >
-                        {task.description}
-                      </Typography>
-                      <Box
+                        variant="body1"
+                        fontWeight={600}
                         sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1,
-                          flexWrap: "wrap",
+                          textDecoration:
+                            task.status === "completed"
+                              ? "line-through"
+                              : "none",
+                          color:
+                            task.status === "completed"
+                              ? "text.secondary"
+                              : "text.primary",
                         }}
                       >
-                        <Chip
-                          label={task.status}
-                          size="small"
-                          sx={{
-                            backgroundColor: getStatusColor(task.status),
-                            color: "#fff",
-                            fontWeight: 500,
-                            height: 20,
-                            fontSize: "0.65rem",
-                          }}
-                        />
-                        <Chip
-                          label={task.priority}
-                          size="small"
-                          variant="outlined"
-                          sx={{
-                            borderColor: getPriorityColor(task.priority),
-                            color: getPriorityColor(task.priority),
-                            fontWeight: 500,
-                            height: 20,
-                            fontSize: "0.65rem",
-                          }}
-                        />
-                        <Typography variant="caption" color="text.secondary">
-                          Project: {getProjectName(task.projectId)}
+                        {task.name}
+                      </Typography>
+                    }
+                    secondaryTypographyProps={{ component: "div" }}
+                    secondary={
+                      <>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          noWrap
+                          sx={{ mb: 0.5 }}
+                        >
+                          {task.description}
                         </Typography>
-                        {task.dueDate && (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <Chip
+                            label={task.status}
+                            size="small"
+                            sx={{
+                              backgroundColor: getStatusColor(task.status),
+                              color: "#fff",
+                              fontWeight: 500,
+                              height: 20,
+                              fontSize: "0.65rem",
+                            }}
+                          />
+                          <Chip
+                            label={task.priority}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              borderColor: getPriorityColor(task.priority),
+                              color: getPriorityColor(task.priority),
+                              fontWeight: 500,
+                              height: 20,
+                              fontSize: "0.65rem",
+                            }}
+                          />
                           <Typography variant="caption" color="text.secondary">
-                            Due: {formatDate(task.dueDate)}
+                            Project: {getProjectName(task.projectId)}
                           </Typography>
-                        )}
-                      </Box>
-                    </>
-                  }
-                />
-                <ListItemSecondaryAction>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => handleMenuOpen(e, task)}
-                    title="More options"
-                  >
-                    <MoreVert fontSize="small" />
-                  </IconButton>
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-          </List>
+                          {task.dueDate && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Due: {formatDate(task.dueDate)}
+                            </Typography>
+                          )}
+                        </Box>
+                      </>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => handleMenuOpen(e, task)}
+                      title="More options"
+                    >
+                      <MoreVert fontSize="small" />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          )
+        ) : (
+          <Grid container spacing={2}>
+            {statusOptions
+              .filter((s) => s.value !== "all")
+              .map((status) => (
+                <Grid item xs={12} md={3} key={status.value}>
+                  <Paper sx={{ p: 2, backgroundColor: "grey.100" }}>
+                    <Typography
+                      variant="h6"
+                      sx={{ color: getStatusColor(status.value) }}
+                    >
+                      {status.label}
+                    </Typography>
+                    {filteredAndSortedTasks
+                      .filter((task) => task.status === status.value)
+                      .map((task) => (
+                        <Box
+                          key={task.id}
+                          onClick={() => {
+                            setSelectedTask(task);
+                            handleEditTask();
+                          }}
+                          sx={{ my: 1, cursor: "pointer" }}
+                        >
+                          <TaskCard
+                            task={task}
+                            onEdit={() => {
+                              setSelectedTask(task);
+                              handleEditTask();
+                            }}
+                            onDelete={() => {
+                              setSelectedTask(task);
+                              handleDeleteConfirmation();
+                            }}
+                            compact
+                          />
+                        </Box>
+                      ))}
+                  </Paper>
+                </Grid>
+              ))}
+          </Grid>
         )}
         <Menu
           anchorEl={menuAnchorEl}

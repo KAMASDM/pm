@@ -25,17 +25,11 @@ import {
   Select,
   Tabs,
   Tab,
-  List,
-  ListItem,
-  ListItemText,
   Tooltip,
   Fade,
   Skeleton,
   useTheme,
   useMediaQuery,
-  Badge,
-  ListItemButton,
-  CircularProgress,
 } from "@mui/material";
 import {
   ArrowBack,
@@ -43,7 +37,6 @@ import {
   Delete,
   Add,
   MoreVert,
-  Assignment,
   Timeline,
   CalendarToday,
   InfoOutlined,
@@ -58,6 +51,7 @@ import {
 } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
 import { stringToColor } from "../../helpers/stringToColor";
+import Milestone from "./Milestone";
 
 const statusOptions = [
   { value: "planning", label: "Planning", color: "#64B5F6" },
@@ -72,47 +66,33 @@ const priorityOptions = [
   { value: "high", label: "High", color: "#DC3545" },
 ];
 
-const taskStatusOptions = [
-  { value: "pending", label: "Pending", color: "#64B5F6" },
-  { value: "in-progress", label: "In Progress", color: "#FFB74D" },
-  { value: "completed", label: "Completed", color: "#81C784" },
-  { value: "blocked", label: "Blocked", color: "#F44336" },
-];
-
-const taskPriorityOptions = [
-  { value: "low", label: "Low", color: "#6BBF6B" },
-  { value: "medium", label: "Medium", color: "#FFD700" },
-  { value: "high", label: "High", color: "#DC3545" },
-];
-
 const ProjectDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { projects, updateProject, deleteProject, getTasksByProject } =
-    useProject();
+  const {
+    projects,
+    updateProject,
+    deleteProject,
+    getTasksByProject,
+    milestones,
+    loadMilestones,
+    createMilestone,
+    deleteMilestone,
+    updateMilestone,
+  } = useProject();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
-  const tasks = getTasksByProject(id);
 
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tabValue, setTabValue] = useState(0);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
-
-  // Dialog states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-
-  // Loading states
   const [isSubmitting, setIsSubmitting] = useState({
     projectEdit: false,
     projectDelete: false,
-    taskCreate: false,
-    taskUpdate: null, // Stores the ID of the task being updated
   });
-
-  // Form states
   const [editForm, setEditForm] = useState({
     name: "",
     description: "",
@@ -120,6 +100,17 @@ const ProjectDetails = () => {
     priority: "",
     dueDate: null,
   });
+  const [showAddMilestone, setShowAddMilestone] = useState(false);
+  const [newMilestoneName, setNewMilestoneName] = useState("");
+  const [editingMilestone, setEditingMilestone] = useState(null);
+
+  const tasks = getTasksByProject(id);
+
+  useEffect(() => {
+    if (id) {
+      loadMilestones(id);
+    }
+  }, [id, loadMilestones]);
 
   useEffect(() => {
     setLoading(true);
@@ -139,26 +130,33 @@ const ProjectDetails = () => {
     setLoading(false);
   }, [id, projects]);
 
-  const groupedTasks = useMemo(() => {
-    const groups = {};
-    if (tasks && Array.isArray(tasks)) {
-      tasks.forEach((task) => {
-        const category = task.category || "Uncategorized";
-        const subcategory = task.subcategory || "General";
+  const handleAddMilestone = async () => {
+    if (newMilestoneName.trim() === "") return;
+    const milestoneData = {
+      name: newMilestoneName,
+      projectId: id,
+      status: "upcoming",
+    };
+    await createMilestone(milestoneData);
+    setNewMilestoneName("");
+    setShowAddMilestone(false);
+  };
 
-        if (!groups[category]) {
-          groups[category] = {};
-        }
-        if (!groups[category][subcategory]) {
-          groups[category][subcategory] = [];
-        }
-        groups[category][subcategory].push(task);
-      });
-    }
-    return groups;
-  }, [tasks]);
+  const handleEditMilestone = (milestone) => {
+    setEditingMilestone(milestone);
+  };
 
-  const calculateProgress = useMemo(() => {
+  const handleUpdateMilestone = async () => {
+    if (!editingMilestone) return;
+    await updateMilestone(editingMilestone.id, editingMilestone, id);
+    setEditingMilestone(null);
+  };
+
+  const handleDeleteMilestone = async (milestoneId) => {
+    await deleteMilestone(milestoneId, id);
+  };
+
+  const progressValue = useMemo(() => {
     if (!tasks || tasks.length === 0) return 0;
     const completedTasks = tasks.filter(
       (task) => task.status === "completed"
@@ -243,7 +241,7 @@ const ProjectDetails = () => {
         value: getTasksByStatus("completed").length,
         icon: <CheckCircleOutline />,
         color:
-          taskStatusOptions.find((opt) => opt.value === "completed")?.color ||
+          statusOptions.find((opt) => opt.value === "completed")?.color ||
           "#81C784",
       },
       {
@@ -251,7 +249,7 @@ const ProjectDetails = () => {
         value: getTasksByStatus("in-progress").length,
         icon: <Cached />,
         color:
-          taskStatusOptions.find((opt) => opt.value === "in-progress")?.color ||
+          statusOptions.find((opt) => opt.value === "in-progress")?.color ||
           "#FFB74D",
       },
       {
@@ -259,7 +257,7 @@ const ProjectDetails = () => {
         value: getTasksByStatus("pending").length,
         icon: <HourglassEmpty />,
         color:
-          taskStatusOptions.find((opt) => opt.value === "pending")?.color ||
+          statusOptions.find((opt) => opt.value === "pending")?.color ||
           "#64B5F6",
       },
       {
@@ -267,7 +265,7 @@ const ProjectDetails = () => {
         value: getTasksByStatus("blocked").length,
         icon: <Block />,
         color:
-          taskStatusOptions.find((opt) => opt.value === "blocked")?.color ||
+          statusOptions.find((opt) => opt.value === "blocked")?.color ||
           "#F44336",
       },
     ],
@@ -321,7 +319,7 @@ const ProjectDetails = () => {
     );
   }
 
-  const progressValue = calculateProgress;
+  // progressValue is now a value, not a function
   const projectDueDate = project.dueDate
     ? project.dueDate.toDate
       ? project.dueDate.toDate()
@@ -465,7 +463,7 @@ const ProjectDetails = () => {
         </Box>
 
         <Grid container spacing={isMobile ? 2 : 3}>
-          <Grid item xs={12} md={8}>
+          <Grid item xs={12}>
             <Paper
               elevation={0}
               sx={{
@@ -547,7 +545,7 @@ const ProjectDetails = () => {
                   aria-label="Project details tabs"
                 >
                   <Tab
-                    label="Overview"
+                    label="Milestones"
                     id="project-tab-0"
                     aria-controls="project-tabpanel-0"
                     sx={{
@@ -556,27 +554,9 @@ const ProjectDetails = () => {
                     }}
                   />
                   <Tab
-                    label={
-                      <Badge
-                        badgeContent={tasks.length}
-                        color="primary"
-                        sx={{ "& .MuiBadge-badge": { right: -10, top: -2 } }}
-                      >
-                        Tasks
-                      </Badge>
-                    }
+                    label="Activity"
                     id="project-tab-1"
                     aria-controls="project-tabpanel-1"
-                    sx={{
-                      minWidth: isMobile ? "auto" : 120,
-                      textTransform: "none",
-                      pr: tasks.length > 0 ? 3 : "inherit",
-                    }}
-                  />
-                  <Tab
-                    label="Activity"
-                    id="project-tab-2"
-                    aria-controls="project-tabpanel-2"
                     sx={{
                       minWidth: isMobile ? "auto" : 120,
                       textTransform: "none",
@@ -586,273 +566,56 @@ const ProjectDetails = () => {
               </Box>
               <Box sx={{ p: isMobile ? 2 : 3 }}>
                 {tabValue === 0 && (
-                  <Box
-                    role="tabpanel"
-                    id="project-tabpanel-0"
-                    aria-labelledby="project-tab-0"
-                  >
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      gutterBottom
-                    >
-                      Description
-                    </Typography>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        p: 3,
-                        mb: 4,
-                        borderRadius: 2,
-                        backgroundColor: "action.hover",
-                      }}
-                    >
-                      <Typography
-                        variant="body1"
-                        color="text.secondary"
-                        sx={{ lineHeight: 1.7, whiteSpace: "pre-wrap" }}
-                      >
-                        {project.description}
-                      </Typography>
-                    </Paper>
-
-                    <Typography
-                      variant="subtitle1"
-                      fontWeight={600}
-                      gutterBottom
-                    >
-                      Task Categories
-                    </Typography>
-                    <Paper
-                      elevation={0}
-                      sx={{
-                        p: 3,
-                        mb: 4,
-                        borderRadius: 2,
-                        backgroundColor: "action.hover",
-                      }}
-                    >
-                      {Object.keys(groupedTasks).length > 0 ? (
-                        <Grid container spacing={3}>
-                          {Object.entries(groupedTasks).map(
-                            ([category, subcategories]) => (
-                              <Grid item xs={12} key={category}>
-                                <Typography
-                                  variant="h6"
-                                  fontWeight={500}
-                                  gutterBottom
-                                  sx={{ textTransform: "capitalize" }}
-                                >
-                                  {category}
-                                </Typography>
-                                <Grid container spacing={2}>
-                                  {Object.entries(subcategories).map(
-                                    ([subcategory, categoryTasks]) => (
-                                      <Grid
-                                        item
-                                        xs={12}
-                                        sm={6}
-                                        md={4}
-                                        key={subcategory}
-                                      >
-                                        <Card
-                                          elevation={0}
-                                          sx={{
-                                            p: 2,
-                                            height: "100%",
-                                            border: `1px solid ${theme.palette.divider}`,
-                                            borderRadius: 2,
-                                            transition: "all 0.2s ease",
-                                            "&:hover": {
-                                              borderColor: "primary.main",
-                                              boxShadow:
-                                                "0 4px 12px rgba(139, 126, 200, 0.1)",
-                                            },
-                                          }}
-                                        >
-                                          <Typography
-                                            variant="subtitle2"
-                                            fontWeight={600}
-                                            gutterBottom
-                                            sx={{ textTransform: "capitalize" }}
-                                          >
-                                            {subcategory}
-                                          </Typography>
-                                          <Typography
-                                            variant="body2"
-                                            color="text.secondary"
-                                          >
-                                            {categoryTasks.length} task{" "}
-                                            {categoryTasks.length !== 1
-                                              ? "s"
-                                              : ""}
-                                          </Typography>
-                                        </Card>
-                                      </Grid>
-                                    )
-                                  )}
-                                </Grid>
-                              </Grid>
-                            )
-                          )}
-                        </Grid>
+                  <Grid container spacing={2}>
+                    {milestones.map((milestone) => (
+                      <Grid item xs={12} md={4} key={milestone.id}>
+                        <Milestone
+                          milestone={milestone}
+                          onMilestoneDelete={handleDeleteMilestone}
+                          onMilestoneEdit={handleEditMilestone}
+                        />
+                      </Grid>
+                    ))}
+                    <Grid item xs={12} md={4}>
+                      {showAddMilestone ? (
+                        <Paper sx={{ p: 2 }}>
+                          <TextField
+                            fullWidth
+                            label="New Milestone Name"
+                            value={newMilestoneName}
+                            onChange={(e) =>
+                              setNewMilestoneName(e.target.value)
+                            }
+                            autoFocus
+                          />
+                          <Box sx={{ mt: 1 }}>
+                            <Button onClick={handleAddMilestone}>Add</Button>
+                            <Button
+                              onClick={() => setShowAddMilestone(false)}
+                              color="error"
+                            >
+                              Cancel
+                            </Button>
+                          </Box>
+                        </Paper>
                       ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          No tasks categorized yet.
-                        </Typography>
+                        <Button
+                          startIcon={<Add />}
+                          onClick={() => setShowAddMilestone(true)}
+                          fullWidth
+                          sx={{ height: "100%", border: "1px dashed grey" }}
+                        >
+                          Add Milestone
+                        </Button>
                       )}
-                    </Paper>
-                  </Box>
+                    </Grid>
+                  </Grid>
                 )}
                 {tabValue === 1 && (
                   <Box
                     role="tabpanel"
                     id="project-tabpanel-1"
                     aria-labelledby="project-tab-1"
-                  >
-                    {tasks.length === 0 ? (
-                      <Box
-                        sx={{
-                          textAlign: "center",
-                          py: 6,
-                          border: "1px dashed",
-                          borderColor: "divider",
-                          borderRadius: 2,
-                        }}
-                      >
-                        <Assignment
-                          sx={{
-                            fontSize: 48,
-                            color: "text.secondary",
-                            mb: 2,
-                            opacity: 0.5,
-                          }}
-                        />
-                        <Typography
-                          variant="h6"
-                          color="text.secondary"
-                          gutterBottom
-                        >
-                          No tasks yet
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <List>
-                        {tasks.map((task) => {
-                          const currentTaskStatus = taskStatusOptions.find(
-                            (opt) => opt.value === task.status
-                          );
-                          const currentTaskPriority = taskPriorityOptions.find(
-                            (opt) => opt.value === task.priority
-                          );
-                          return (
-                            <ListItem
-                              key={task.id}
-                              sx={{
-                                borderRadius: 2,
-                                mb: 1,
-                                p: 0,
-                                background:
-                                  "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
-                                border: (theme) =>
-                                  `1px solid ${theme.palette.divider}`,
-                                "&:hover": { backgroundColor: "action.hover" },
-                              }}
-                              secondaryAction={
-                                isSubmitting.taskUpdate === task.id ? (
-                                  <CircularProgress size={24} />
-                                ) : null
-                              }
-                            >
-                              <ListItemButton
-                                sx={{ borderRadius: 2, py: 1.5, px: 2 }}
-                              >
-                                <ListItemText
-                                  primary={
-                                    <Typography
-                                      variant="body1"
-                                      sx={{
-                                        textDecoration:
-                                          task.status === "completed"
-                                            ? "line-through"
-                                            : "none",
-                                        color:
-                                          task.status === "completed"
-                                            ? "text.secondary"
-                                            : "text.primary",
-                                        fontWeight:
-                                          task.status === "completed"
-                                            ? 400
-                                            : 500,
-                                      }}
-                                    >
-                                      {task.name}
-                                    </Typography>
-                                  }
-                                  secondary={
-                                    <Box
-                                      sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 1,
-                                        mt: 0.5,
-                                        flexWrap: "wrap",
-                                      }}
-                                    >
-                                      <Chip
-                                        label={
-                                          currentTaskStatus?.label ||
-                                          task.status
-                                        }
-                                        size="small"
-                                        sx={{
-                                          height: 20,
-                                          fontSize: "0.65rem",
-                                          backgroundColor: `${
-                                            currentTaskStatus?.color ||
-                                            "#757575"
-                                          }20`,
-                                          color:
-                                            currentTaskStatus?.color ||
-                                            "#757575",
-                                          fontWeight: 600,
-                                        }}
-                                      />
-                                      <Chip
-                                        label={
-                                          currentTaskPriority?.label ||
-                                          task.priority
-                                        }
-                                        size="small"
-                                        sx={{
-                                          height: 20,
-                                          fontSize: "0.65rem",
-                                          backgroundColor: `${
-                                            currentTaskPriority?.color ||
-                                            "#757575"
-                                          }20`,
-                                          color:
-                                            currentTaskPriority?.color ||
-                                            "#757575",
-                                          fontWeight: 600,
-                                        }}
-                                      />
-                                    </Box>
-                                  }
-                                />
-                              </ListItemButton>
-                            </ListItem>
-                          );
-                        })}
-                      </List>
-                    )}
-                  </Box>
-                )}
-                {tabValue === 2 && (
-                  <Box
-                    role="tabpanel"
-                    id="project-tabpanel-2"
-                    aria-labelledby="project-tab-2"
                   >
                     <Typography
                       variant="subtitle1"
@@ -893,198 +656,6 @@ const ProjectDetails = () => {
                 )}
               </Box>
             </Paper>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                gap: isMobile ? 2 : 3,
-              }}
-            >
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  background:
-                    "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
-                  border: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  fontWeight={600}
-                  gutterBottom
-                  sx={{ display: "flex", alignItems: "center", gap: 1.5 }}
-                >
-                  <InfoOutlined color="primary" />
-                  Project Information
-                </Typography>
-                <Box
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2.5,
-                    mt: 2,
-                  }}
-                >
-                  {projectDueDate && (
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                      <CalendarToday color="primary" fontSize="small" />
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Due Date
-                        </Typography>
-                        <Typography
-                          variant="body1"
-                          fontWeight={500}
-                          sx={{
-                            color: isOverdue ? "error.main" : "text.primary",
-                          }}
-                        >
-                          {formatDate(projectDueDate)}{" "}
-                          {isOverdue && "(Overdue)"}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  )}
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <AccountCircle color="primary" fontSize="small" />
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Created by
-                      </Typography>
-                      <Typography variant="body1" fontWeight={500}>
-                        {project.createdByName || "N/A"}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Box>
-              </Paper>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  background:
-                    "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
-                  border: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  fontWeight={600}
-                  gutterBottom
-                  sx={{ display: "flex", alignItems: "center", gap: 1.5 }}
-                >
-                  <PeopleOutline color="primary" />
-                  Team
-                </Typography>
-                {project.assignedTo && project.assignedTo.length > 0 ? (
-                  <AvatarGroup
-                    max={8}
-                    sx={{
-                      justifyContent: "flex-start",
-                      mt: 2,
-                      "& .MuiAvatar-root": {
-                        width: 32,
-                        height: 32,
-                        fontSize: "0.875rem",
-                      },
-                    }}
-                  >
-                    {project.assignedTo.map((member) => (
-                      <Tooltip
-                        key={member.id || member.email}
-                        title={member.name || member.email}
-                        arrow
-                      >
-                        <Avatar
-                          sx={{
-                            bgcolor: stringToColor(member.name || member.email),
-                            border: `2px solid ${theme.palette.background.paper}`,
-                          }}
-                          src={member.photoURL}
-                        >
-                          {(member.name || member.email)
-                            ?.charAt(0)
-                            ?.toUpperCase()}
-                        </Avatar>
-                      </Tooltip>
-                    ))}
-                  </AvatarGroup>
-                ) : (
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mt: 2 }}
-                  >
-                    No members assigned.
-                  </Typography>
-                )}
-              </Paper>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 3,
-                  borderRadius: 3,
-                  background:
-                    "linear-gradient(135deg, rgba(139, 126, 200, 0.03), rgba(181, 169, 214, 0.05))",
-                  border: `1px solid ${theme.palette.divider}`,
-                }}
-              >
-                <Typography
-                  variant="h6"
-                  fontWeight={600}
-                  gutterBottom
-                  sx={{ display: "flex", alignItems: "center", gap: 1.5 }}
-                >
-                  <BarChart color="primary" />
-                  Quick Stats
-                </Typography>
-                <Grid container spacing={isMobile ? 1 : 2} sx={{ mt: 0.5 }}>
-                  {quickStats.map((stat) => (
-                    <Grid item xs={6} key={stat.label}>
-                      <Card
-                        elevation={0}
-                        sx={{
-                          p: 2,
-                          borderRadius: 3,
-                          textAlign: "left",
-                          backgroundColor: `${stat.color}20`,
-                          border: `1px solid ${stat.color}60`,
-                          height: "100%",
-                        }}
-                      >
-                        <Box sx={{ color: stat.color, mb: 1 }}>
-                          {React.cloneElement(stat.icon, {
-                            fontSize: "medium",
-                          })}
-                        </Box>
-                        <Typography
-                          variant="h5"
-                          fontWeight={700}
-                          sx={{ color: stat.color }}
-                        >
-                          {stat.value}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{
-                            color: stat.color,
-                            fontWeight: 500,
-                            display: "block",
-                          }}
-                        >
-                          {stat.label}
-                        </Typography>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Paper>
-            </Box>
           </Grid>
         </Grid>
         <Dialog
@@ -1260,6 +831,32 @@ const ProjectDetails = () => {
             >
               {isSubmitting.projectDelete ? "Deleting..." : "Delete Project"}
             </Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog
+          open={!!editingMilestone}
+          onClose={() => setEditingMilestone(null)}
+        >
+          <DialogTitle>Edit Milestone</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Milestone Name"
+              type="text"
+              fullWidth
+              value={editingMilestone?.name || ""}
+              onChange={(e) =>
+                setEditingMilestone({
+                  ...editingMilestone,
+                  name: e.target.value,
+                })
+              }
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditingMilestone(null)}>Cancel</Button>
+            <Button onClick={handleUpdateMilestone}>Save</Button>
           </DialogActions>
         </Dialog>
         <Menu
