@@ -135,7 +135,7 @@ const ApiIntegration = () => {
   };
 
   const bootstrapCommand = useMemo(
-    () => `mkdir -p .orbit\ncurl -fsSL ${hostedCliUrl} -o .orbit/orbit-pm.mjs\nnode .orbit/orbit-pm.mjs init`,
+    () => `mkdir -p .orbit\ncurl -fsSL ${hostedCliUrl} -o .orbit/orbit-pm.mjs\nnode .orbit/orbit-pm.mjs init --template custom-software`,
     []
   );
   const syncCommand = "ORBIT_API_KEY=orbit_sk_... node .orbit/orbit-pm.mjs sync";
@@ -157,11 +157,12 @@ const ApiIntegration = () => {
           <Box>
             <Chip label="Developer automation" sx={{ mb: 2, color: "white", bgcolor: "rgba(255,255,255,.13)" }} />
             <Typography variant="h3" color="inherit" gutterBottom>
-              ASC-OS Project Sync API
+              ASC-OS Project API v2
             </Typography>
             <Typography sx={{ maxWidth: 720, color: "rgba(255,255,255,.74)" }}>
               Connect any VS Code repository, generate its project-management plan, and keep projects,
-              milestones, tasks, clients, progress, and delivery status synchronized on every push.
+              milestones, tasks, clients, team records, templates, progress, insights, and delivery status
+              synchronized on every push or managed through granular REST endpoints.
             </Typography>
           </Box>
           <Api sx={{ fontSize: 76, opacity: 0.25, alignSelf: "center" }} />
@@ -226,6 +227,7 @@ const ApiIntegration = () => {
               <Typography color="text.secondary" sx={{ mb: 2 }}>
                 Run this once in the repository root. The initializer scans common project metadata and creates
                 <code> .orbit/project.json</code> with a complete delivery lifecycle template.
+                Change <code>custom-software</code> to <code>website</code>, <code>crm</code>, <code>erp</code>, or <code>mobile-app</code>.
               </Typography>
               <CodeBlock onCopy={copy}>{bootstrapCommand}</CodeBlock>
               <Typography variant="subtitle1" fontWeight={700} sx={{ mt: 3, mb: 1 }}>First sync</Typography>
@@ -263,7 +265,7 @@ const ApiIntegration = () => {
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" gap={1.5} alignItems="center" sx={{ mb: 2 }}>
                 <Sync color="primary" />
-                <Typography variant="h5">REST endpoint</Typography>
+                <Typography variant="h5">REST API v2</Typography>
               </Stack>
               <TextField
                 fullWidth
@@ -278,7 +280,9 @@ const ApiIntegration = () => {
               <Typography variant="body2" color="text.secondary">
                 Send <code>POST</code> with <code>Authorization: Bearer orbit_sk_...</code>. Sync is idempotent:
                 stable external IDs update existing records instead of creating duplicates. Set <code>replace: true</code>
-                to remove integration-managed tasks and milestones omitted from the next manifest.
+                to remove integration-managed tasks and milestones omitted from the next manifest. The same base URL
+                also provides template/category discovery, project reads and patches, task/milestone CRUD, team-member
+                records, and <code>GET /v1/projects/:externalId/insights</code>.
               </Typography>
             </CardContent>
           </Card>
@@ -292,7 +296,7 @@ const ApiIntegration = () => {
                 <Typography variant="h5">What the manifest controls</Typography>
               </Stack>
               <Grid container spacing={2}>
-                {["Project name, description, status, priority, due date and repository", "Milestones with stable IDs, status and due dates", "Tasks, checklists, estimates, categories, priorities and assignee snapshots", "Client account provisioning and project membership", "Automatic progress and project-status calculation", "Merge-safe or replace-mode synchronization"].map((item) => (
+                {["Project template, metadata, due date and repository", "Milestones with stable IDs, status and expected deadlines", "Tasks, checklists, estimates, categories, subcategories and assignees", "Client provisioning and project membership", "Team-member planning records", "Health, forecast, risk, workload and schedule insights", "Granular reads, patches, upserts and deletes", "Merge-safe or replace-mode full synchronization"].map((item) => (
                   <Grid item xs={12} sm={6} md={4} key={item}>
                     <Stack direction="row" gap={1} alignItems="flex-start"><CheckCircle color="success" fontSize="small" /><Typography variant="body2">{item}</Typography></Stack>
                   </Grid>

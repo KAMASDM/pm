@@ -116,13 +116,13 @@ Connect any Git repository from its root:
 ```bash
 mkdir -p .orbit
 curl -fsSL https://learntospeak-b7404.web.app/orbit-pm.mjs -o .orbit/orbit-pm.mjs
-node .orbit/orbit-pm.mjs init
+node .orbit/orbit-pm.mjs init --template custom-software
 node .orbit/orbit-pm.mjs configure
 node .orbit/orbit-pm.mjs sync
 node .orbit/orbit-pm.mjs install-hook
 ```
 
-`init` inspects package metadata, README content, Git remote/branch, and detected dependencies. It creates `.orbit/project.json` with a five-milestone delivery lifecycle and a detailed task plan. Edit that file to match the real scope. Stable `externalId` values make every sync idempotent.
+`init` inspects package metadata, README content, Git remote/branch, and detected dependencies. Choose `website`, `crm`, `erp`, `mobile-app`, or `custom-software`; when omitted, the CLI detects the closest template. It creates `.orbit/project.json` with a template-aware delivery lifecycle, categories, subcategories, and detailed task plan. Edit that file to match the real scope. Stable `externalId` values make every sync idempotent.
 
 The pre-push hook works with terminal Git and VS Code Source Control. Include completion markers in commit subjects to close tasks automatically before the push:
 
@@ -137,7 +137,7 @@ Useful CLI commands:
 - `node .orbit/orbit-pm.mjs sync` — send the full manifest.
 - `node .orbit/orbit-pm.mjs install-hook` — preserve any existing pre-push hook and append ASC-OS sync.
 
-The REST endpoint is `POST /v1/projects/sync` on the `projectSyncApi` Function. Send the API key in `Authorization: Bearer <key>`. A manifest can manage project metadata, milestones, tasks, checklists, estimates, assignee display snapshots, and client provisioning. `replace: true` removes only integration-owned tasks and milestones omitted from the next manifest; manually created records remain untouched.
+The REST API is exposed by the `projectSyncApi` Function. Send the API key in `Authorization: Bearer <key>`. `POST /v1/projects/sync` remains the fastest way to reconcile a complete manifest, while API v2 also supports template/category discovery, project reads and updates, milestone and task CRUD, team-member planning records, and computed project insights. A sync manifest can manage project metadata, milestones, tasks, checklists, estimates, assignee display snapshots, and client provisioning. `replace: true` removes only integration-owned tasks and milestones omitted from the next manifest; manually created records remain untouched. See [PROJECT_SYNC_API.md](PROJECT_SYNC_API.md) for the complete route and payload reference.
 
 Never commit `.orbit/config.local.json` or `.orbit/state.json`. The CLI adds both local-only files to the connected repository's `.gitignore` automatically.
 

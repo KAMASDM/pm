@@ -15,6 +15,12 @@ import {
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import {
+  getProjectTemplate,
+  projectTemplates,
+  templateCategoryDocument,
+} from "./projectTemplates.js";
+import { calculateProjectInsights } from "./projectInsights.js";
 
 initializeApp();
 
@@ -298,6 +304,7 @@ const projectStatuses = new Set(["planning", "in-progress", "on-hold", "complete
 const taskStatuses = new Set(["pending", "in-progress", "blocked", "completed"]);
 const milestoneStatuses = new Set(["upcoming", "in-progress", "completed"]);
 const priorities = new Set(["low", "medium", "high"]);
+const projectTypes = new Set(projectTemplates.map((template) => template.id));
 const normalizeChoice = (value, allowed, fallback) =>
   allowed.has(value) ? value : fallback;
 
@@ -318,7 +325,15 @@ export const createProjectApiKey = onCall({ region }, async (request) => {
     tokenHash: hashValue(token),
     prefix: `orbit_sk_${keyId}`,
     active: true,
-    scopes: ["projects:sync"],
+    scopes: [
+      "templates:read",
+      "categories:read",
+      "projects:read",
+      "projects:write",
+      "insights:read",
+      "team:read",
+      "team:write",
+    ],
     createdBy: uid,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -374,6 +389,21 @@ const authenticateApiRequest = async (request) => {
 const sendApiError = (response, status, code, message, details = null) =>
   response.status(status).json({ ok: false, error: { code, message, details } });
 
+const ensureTemplateCategory = async (projectType) => {
+  const template = getProjectTemplate(projectType);
+  if (!template) return null;
+  const categoryRef = db.doc(`categories/template-${template.id}`);
+  const snapshot = await categoryRef.get();
+  if (!snapshot.exists) {
+    await categoryRef.set({
+      ...templateCategoryDocument(template),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+  return categoryRef.id;
+};
+
 const validateSyncManifest = (body) => {
   const externalId = cleanText(body?.externalId, 160);
   const name = cleanText(body?.name, 160);
@@ -407,6 +437,18 @@ const syncProjectManifest = async (apiKey, body) => {
     throw new HttpsError("permission-denied", "This project belongs to another integration key.");
   }
 
+  const requestedProjectType = body.projectType || existingProject.projectType || null;
+  if (requestedProjectType && !projectTypes.has(requestedProjectType)) {
+    throw new HttpsError(
+      "invalid-argument",
+      `projectType must be one of: ${[...projectTypes].join(", ")}.`
+    );
+  }
+  const template = getProjectTemplate(requestedProjectType);
+  const templateCategoryId = template
+    ? await ensureTemplateCategory(template.id)
+    : null;
+
   const now = Timestamp.now();
   const completedTaskCount = tasks.filter((task) => task.status === "completed").length;
   const inferredStatus = tasks.length > 0 && completedTaskCount === tasks.length
@@ -420,6 +462,11 @@ const syncProjectManifest = async (apiKey, body) => {
     status: normalizeChoice(body.status, projectStatuses, inferredStatus),
     priority: normalizeChoice(body.priority, priorities, "medium"),
     dueDate: toOptionalTimestamp(body.dueDate),
+    projectType: template?.id || existingProject.projectType || null,
+    templateName: template?.name || existingProject.templateName || "",
+    selectedCategories: templateCategoryId
+      ? [templateCategoryId]
+      : existingProject.selectedCategories || [],
     assignedTo: existingProject.assignedTo || [],
     teamMembers: existingProject.teamMembers || [],
     clients: existingProject.clients || [],
@@ -484,7 +531,7 @@ const syncProjectManifest = async (apiKey, body) => {
       description: cleanText(task.description, 4000),
       status: normalizeChoice(task.status, taskStatuses, "pending"),
       priority: normalizeChoice(task.priority, priorities, "medium"),
-      category: cleanText(task.category, 120),
+      category: cleanText(task.category, 120) || template?.categoryName || "",
       subcategory: cleanText(task.subcategory, 120),
       assignedTo: existing.assignedTo || null,
       assignedToName: cleanText(task.assignedToName, 160) || existing.assignedToName || "",
@@ -502,6 +549,9 @@ const syncProjectManifest = async (apiKey, body) => {
           completed: Boolean(item?.completed),
         }))
         : existing.checklist || [],
+      completedAt: task.status === "completed"
+        ? toOptionalTimestamp(task.completedAt) || existing.completedAt || now
+        : null,
       createdBy: existing.createdBy || apiKey.createdBy,
       createdByName: existing.createdByName || "VS Code integration",
       createdAt: existing.createdAt || now,
@@ -552,30 +602,417 @@ const syncProjectManifest = async (apiKey, body) => {
   };
 };
 
+const serializeApiValue = (value) => {
+  if (value === null || value === undefined) return value ?? null;
+  if (value?.toDate) return value.toDate().toISOString();
+  if (Array.isArray(value)) return value.map(serializeApiValue);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, serializeApiValue(item)])
+    );
+  }
+  return value;
+};
+
+const requireApiProject = async (apiKey, externalId) => {
+  const normalizedExternalId = cleanText(externalId, 160);
+  if (!normalizedExternalId) {
+    throw new HttpsError("invalid-argument", "Project external ID is required.");
+  }
+  const projectId = stableDocumentId(apiKey.keyId, normalizedExternalId);
+  const ref = db.doc(`projects/${projectId}`);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) throw new HttpsError("not-found", "Project not found.");
+  const project = snapshot.data();
+  if (
+    project.integration?.apiKeyId !== apiKey.keyId ||
+    project.integration?.externalId !== normalizedExternalId
+  ) {
+    throw new HttpsError("permission-denied", "This project belongs to another integration key.");
+  }
+  return { projectId, ref, snapshot, project, externalId: normalizedExternalId };
+};
+
+const getApiProjectGraph = async (apiKey, externalId) => {
+  const context = await requireApiProject(apiKey, externalId);
+  const [milestoneSnapshot, taskSnapshot] = await Promise.all([
+    db.collection("milestones").where("projectId", "==", context.projectId).get(),
+    db.collection("tasks").where("projectId", "==", context.projectId).get(),
+  ]);
+  const milestones = milestoneSnapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
+  }));
+  const tasks = taskSnapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data(),
+  }));
+  return { ...context, milestones, tasks };
+};
+
+const patchApiProject = async (apiKey, externalId, body) => {
+  const context = await requireApiProject(apiKey, externalId);
+  const update = { updatedAt: Timestamp.now() };
+  if (body.name !== undefined) {
+    const name = cleanText(body.name, 160);
+    if (!name) throw new HttpsError("invalid-argument", "Project name cannot be empty.");
+    update.name = name;
+  }
+  if (body.description !== undefined) update.description = cleanText(body.description, 4000);
+  if (body.status !== undefined) {
+    if (!projectStatuses.has(body.status)) throw new HttpsError("invalid-argument", "Invalid project status.");
+    update.status = body.status;
+  }
+  if (body.priority !== undefined) {
+    if (!priorities.has(body.priority)) throw new HttpsError("invalid-argument", "Invalid project priority.");
+    update.priority = body.priority;
+  }
+  if (body.dueDate !== undefined) update.dueDate = toOptionalTimestamp(body.dueDate);
+  if (body.projectType !== undefined) {
+    if (!projectTypes.has(body.projectType)) {
+      throw new HttpsError("invalid-argument", `projectType must be one of: ${[...projectTypes].join(", ")}.`);
+    }
+    const template = getProjectTemplate(body.projectType);
+    update.projectType = template.id;
+    update.templateName = template.name;
+    update.selectedCategories = [await ensureTemplateCategory(template.id)];
+  }
+  await context.ref.update(update);
+  return { projectId: context.projectId, externalId: context.externalId, updated: true };
+};
+
+const upsertApiMilestone = async (apiKey, projectExternalId, milestoneExternalId, body) => {
+  const context = await requireApiProject(apiKey, projectExternalId);
+  const externalId = cleanText(milestoneExternalId, 160);
+  if (!externalId) throw new HttpsError("invalid-argument", "Milestone external ID is required.");
+  const ref = db.doc(`milestones/${stableDocumentId(context.projectId, `milestone:${externalId}`)}`);
+  const snapshot = await ref.get();
+  const existing = snapshot.data() || {};
+  const name = cleanText(body.name, 200) || existing.name || externalId;
+  const status = body.status === undefined
+    ? existing.status || "upcoming"
+    : normalizeChoice(body.status, milestoneStatuses, null);
+  if (!status) throw new HttpsError("invalid-argument", "Invalid milestone status.");
+  await ref.set({
+    projectId: context.projectId,
+    name,
+    description: body.description === undefined
+      ? existing.description || ""
+      : cleanText(body.description, 2000),
+    status,
+    dueDate: body.dueDate === undefined ? existing.dueDate || null : toOptionalTimestamp(body.dueDate),
+    createdBy: existing.createdBy || apiKey.createdBy,
+    createdAt: existing.createdAt || Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    integration: { apiKeyId: apiKey.keyId, externalId },
+  }, { merge: true });
+  return { id: ref.id, externalId, created: !snapshot.exists };
+};
+
+const deleteApiMilestone = async (apiKey, projectExternalId, milestoneExternalId) => {
+  const context = await requireApiProject(apiKey, projectExternalId);
+  const externalId = cleanText(milestoneExternalId, 160);
+  const ref = db.doc(`milestones/${stableDocumentId(context.projectId, `milestone:${externalId}`)}`);
+  const snapshot = await ref.get();
+  if (!snapshot.exists || snapshot.data().integration?.apiKeyId !== apiKey.keyId) {
+    throw new HttpsError("not-found", "Milestone not found.");
+  }
+  const linkedTasks = await db.collection("tasks").where("milestoneId", "==", ref.id).get();
+  const writer = db.bulkWriter();
+  linkedTasks.docs.forEach((task) => writer.delete(task.ref));
+  writer.delete(ref);
+  await writer.close();
+  return { deleted: true, externalId, deletedTasks: linkedTasks.size };
+};
+
+const upsertApiTask = async (apiKey, projectExternalId, taskExternalId, body) => {
+  const context = await requireApiProject(apiKey, projectExternalId);
+  const externalId = cleanText(taskExternalId, 160);
+  if (!externalId) throw new HttpsError("invalid-argument", "Task external ID is required.");
+  const ref = db.doc(`tasks/${stableDocumentId(context.projectId, `task:${externalId}`)}`);
+  const snapshot = await ref.get();
+  const existing = snapshot.data() || {};
+  let milestoneId = existing.milestoneId || null;
+  if (body.milestoneExternalId !== undefined) {
+    milestoneId = body.milestoneExternalId
+      ? stableDocumentId(
+          context.projectId,
+          `milestone:${cleanText(body.milestoneExternalId, 160)}`
+        )
+      : null;
+    if (milestoneId && !(await db.doc(`milestones/${milestoneId}`).get()).exists) {
+      throw new HttpsError("not-found", "The requested milestone does not exist.");
+    }
+  }
+  const status = body.status === undefined
+    ? existing.status || "pending"
+    : normalizeChoice(body.status, taskStatuses, null);
+  const priority = body.priority === undefined
+    ? existing.priority || "medium"
+    : normalizeChoice(body.priority, priorities, null);
+  if (!status) throw new HttpsError("invalid-argument", "Invalid task status.");
+  if (!priority) throw new HttpsError("invalid-argument", "Invalid task priority.");
+  const template = getProjectTemplate(context.project.projectType);
+  const estimatedHours = body.estimatedHours === undefined
+    ? existing.estimatedHours || ""
+    : body.estimatedHours === null || body.estimatedHours === ""
+      ? ""
+      : Number(body.estimatedHours);
+  if (estimatedHours !== "" && !Number.isFinite(estimatedHours)) {
+    throw new HttpsError("invalid-argument", "estimatedHours must be numeric.");
+  }
+  await ref.set({
+    projectId: context.projectId,
+    milestoneId,
+    name: cleanText(body.name, 240) || existing.name || externalId,
+    description: body.description === undefined
+      ? existing.description || ""
+      : cleanText(body.description, 4000),
+    status,
+    priority,
+    category: body.category === undefined
+      ? existing.category || template?.categoryName || ""
+      : cleanText(body.category, 120),
+    subcategory: body.subcategory === undefined
+      ? existing.subcategory || ""
+      : cleanText(body.subcategory, 120),
+    assignedTo: existing.assignedTo || null,
+    assignedToName: body.assignedToName === undefined
+      ? existing.assignedToName || ""
+      : cleanText(body.assignedToName, 160),
+    assignedToEmail: body.assignedToEmail === undefined
+      ? existing.assignedToEmail || ""
+      : normalizeContactEmail(body.assignedToEmail),
+    dueDate: body.dueDate === undefined ? existing.dueDate || null : toOptionalTimestamp(body.dueDate),
+    estimatedHours,
+    checklist: body.checklist === undefined
+      ? existing.checklist || []
+      : (Array.isArray(body.checklist) ? body.checklist : []).slice(0, 100).map((item) => ({
+          text: cleanText(item?.text, 500),
+          completed: Boolean(item?.completed),
+        })),
+    completedAt: status === "completed"
+      ? toOptionalTimestamp(body.completedAt) || existing.completedAt || Timestamp.now()
+      : null,
+    createdBy: existing.createdBy || apiKey.createdBy,
+    createdByName: existing.createdByName || "VS Code integration",
+    createdAt: existing.createdAt || Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    integration: { apiKeyId: apiKey.keyId, externalId },
+  }, { merge: true });
+  return { id: ref.id, externalId, created: !snapshot.exists };
+};
+
+const deleteApiTask = async (apiKey, projectExternalId, taskExternalId) => {
+  const context = await requireApiProject(apiKey, projectExternalId);
+  const externalId = cleanText(taskExternalId, 160);
+  const ref = db.doc(`tasks/${stableDocumentId(context.projectId, `task:${externalId}`)}`);
+  const snapshot = await ref.get();
+  if (!snapshot.exists || snapshot.data().integration?.apiKeyId !== apiKey.keyId) {
+    throw new HttpsError("not-found", "Task not found.");
+  }
+  await ref.delete();
+  return { deleted: true, externalId };
+};
+
+const upsertApiTeamMember = async (apiKey, externalIdValue, body) => {
+  const externalId = cleanText(externalIdValue, 160);
+  const name = cleanText(body.name, 160);
+  const email = normalizeContactEmail(body.email);
+  if (!externalId || !name || !email.includes("@")) {
+    throw new HttpsError("invalid-argument", "External ID, name, and a valid email are required.");
+  }
+  const ref = db.doc(`employees/${stableDocumentId(apiKey.keyId, `team:${externalId}`)}`);
+  const snapshot = await ref.get();
+  const existing = snapshot.data() || {};
+  await ref.set({
+    name,
+    email,
+    phone: cleanText(body.phone, 40),
+    role: cleanText(body.role, 80),
+    department: cleanText(body.department, 120),
+    skills: Array.isArray(body.skills)
+      ? body.skills.slice(0, 100).map((skill) => cleanText(skill, 120)).filter(Boolean)
+      : existing.skills || [],
+    createdBy: existing.createdBy || apiKey.createdBy,
+    createdAt: existing.createdAt || Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    integration: { apiKeyId: apiKey.keyId, externalId },
+  }, { merge: true });
+  return {
+    id: ref.id,
+    externalId,
+    created: !snapshot.exists,
+    workspaceLoginCreated: false,
+  };
+};
+
+const deleteApiTeamMember = async (apiKey, externalIdValue) => {
+  const externalId = cleanText(externalIdValue, 160);
+  const ref = db.doc(`employees/${stableDocumentId(apiKey.keyId, `team:${externalId}`)}`);
+  const snapshot = await ref.get();
+  if (!snapshot.exists || snapshot.data().integration?.apiKeyId !== apiKey.keyId) {
+    throw new HttpsError("not-found", "Team member not found.");
+  }
+  await ref.delete();
+  return { deleted: true, externalId };
+};
+
 export const projectSyncApi = onRequest(
   { region, cors: true, timeoutSeconds: 120, maxInstances: 10 },
   async (request, response) => {
     if (request.method === "OPTIONS") return response.status(204).send("");
     if (request.method === "GET" && request.path === "/v1/health") {
-      return response.json({ ok: true, service: "orbit-project-sync", version: 1 });
+      return response.json({ ok: true, service: "asc-os-project-api", version: 2 });
     }
     const apiKey = await authenticateApiRequest(request);
     if (!apiKey) return sendApiError(response, 401, "unauthorized", "A valid Bearer API key is required.");
-    if (request.method !== "POST" || request.path !== "/v1/projects/sync") {
-      return sendApiError(response, 404, "not_found", "Use POST /v1/projects/sync.");
-    }
     try {
-      const result = await syncProjectManifest(apiKey, request.body || {});
-      return response.status(200).json({ ok: true, data: result });
+      const segments = request.path
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => decodeURIComponent(segment));
+
+      if (request.method === "GET" && request.path === "/v1/templates") {
+        return response.json({ ok: true, data: { templates: projectTemplates } });
+      }
+      if (request.method === "GET" && request.path === "/v1/categories") {
+        const snapshot = await db.collection("categories").orderBy("name").get();
+        return response.json({
+          ok: true,
+          data: {
+            categories: snapshot.docs.map((document) =>
+              serializeApiValue({ id: document.id, ...document.data() })
+            ),
+          },
+        });
+      }
+      if (request.method === "GET" && request.path === "/v1/team-members") {
+        const snapshot = await db
+          .collection("employees")
+          .where("integration.apiKeyId", "==", apiKey.keyId)
+          .get();
+        return response.json({
+          ok: true,
+          data: {
+            teamMembers: snapshot.docs.map((document) =>
+              serializeApiValue({ id: document.id, ...document.data() })
+            ),
+          },
+        });
+      }
+      if (
+        ["PUT", "DELETE"].includes(request.method) &&
+        segments.length === 3 &&
+        segments[0] === "v1" &&
+        segments[1] === "team-members"
+      ) {
+        const result = request.method === "PUT"
+          ? await upsertApiTeamMember(apiKey, segments[2], request.body || {})
+          : await deleteApiTeamMember(apiKey, segments[2]);
+        return response.status(result.created ? 201 : 200).json({ ok: true, data: result });
+      }
+      if (request.method === "GET" && request.path === "/v1/projects") {
+        const snapshot = await db
+          .collection("projects")
+          .where("integration.apiKeyId", "==", apiKey.keyId)
+          .get();
+        return response.json({
+          ok: true,
+          data: {
+            projects: snapshot.docs.map((document) =>
+              serializeApiValue({ id: document.id, ...document.data() })
+            ),
+          },
+        });
+      }
+      if (request.method === "POST" && request.path === "/v1/projects/sync") {
+        const result = await syncProjectManifest(apiKey, request.body || {});
+        return response.status(200).json({ ok: true, data: result });
+      }
+      if (
+        segments.length >= 3 &&
+        segments[0] === "v1" &&
+        segments[1] === "projects"
+      ) {
+        const projectExternalId = segments[2];
+        if (segments.length === 3 && request.method === "GET") {
+          const graph = await getApiProjectGraph(apiKey, projectExternalId);
+          return response.json({
+            ok: true,
+            data: serializeApiValue({
+              project: { id: graph.projectId, ...graph.project },
+              milestones: graph.milestones,
+              tasks: graph.tasks,
+            }),
+          });
+        }
+        if (segments.length === 3 && request.method === "PATCH") {
+          return response.json({
+            ok: true,
+            data: await patchApiProject(apiKey, projectExternalId, request.body || {}),
+          });
+        }
+        if (
+          segments.length === 4 &&
+          segments[3] === "insights" &&
+          request.method === "GET"
+        ) {
+          const graph = await getApiProjectGraph(apiKey, projectExternalId);
+          return response.json({
+            ok: true,
+            data: calculateProjectInsights({
+              project: graph.project,
+              milestones: graph.milestones,
+              tasks: graph.tasks,
+            }),
+          });
+        }
+        if (
+          segments.length === 5 &&
+          segments[3] === "milestones" &&
+          ["PUT", "DELETE"].includes(request.method)
+        ) {
+          const result = request.method === "PUT"
+            ? await upsertApiMilestone(
+                apiKey,
+                projectExternalId,
+                segments[4],
+                request.body || {}
+              )
+            : await deleteApiMilestone(apiKey, projectExternalId, segments[4]);
+          return response.status(result.created ? 201 : 200).json({ ok: true, data: result });
+        }
+        if (
+          segments.length === 5 &&
+          segments[3] === "tasks" &&
+          ["PUT", "DELETE"].includes(request.method)
+        ) {
+          const result = request.method === "PUT"
+            ? await upsertApiTask(
+                apiKey,
+                projectExternalId,
+                segments[4],
+                request.body || {}
+              )
+            : await deleteApiTask(apiKey, projectExternalId, segments[4]);
+          return response.status(result.created ? 201 : 200).json({ ok: true, data: result });
+        }
+      }
+      return sendApiError(response, 404, "not_found", "API route not found.");
     } catch (error) {
       console.error("Project sync failed:", error);
       const invalid = error instanceof HttpsError && error.code === "invalid-argument";
       const forbidden = error instanceof HttpsError && error.code === "permission-denied";
+      const missing = error instanceof HttpsError && error.code === "not-found";
+      const conflict = error instanceof HttpsError && error.code === "already-exists";
       return sendApiError(
         response,
-        invalid ? 400 : forbidden ? 403 : 500,
+        invalid ? 400 : forbidden ? 403 : missing ? 404 : conflict ? 409 : 500,
         error.code || "internal",
-        invalid || forbidden ? error.message : "Project sync failed."
+        invalid || forbidden || missing || conflict
+          ? error.message
+          : "Project API request failed."
       );
     }
   }

@@ -12,6 +12,28 @@ const manifestPath = join(orbitDir, "project.json");
 const statePath = join(orbitDir, "state.json");
 const localConfigPath = join(orbitDir, "config.local.json");
 const defaultEndpoint = "https://asia-south1-learntospeak-b7404.cloudfunctions.net/projectSyncApi";
+const deliveryTemplates = {
+  website: {
+    category: "Website Delivery",
+    phases: ["Discovery & Sitemap", "UI/UX Design", "Frontend Development", "Responsive, Accessibility & Browser QA", "Launch & Handover"],
+  },
+  crm: {
+    category: "CRM Delivery",
+    phases: ["Process Discovery & Requirements", "Customer & Sales Data Model", "Lead, Pipeline & Opportunity Management", "QA, UAT & Training", "Go-live & Adoption"],
+  },
+  erp: {
+    category: "ERP Delivery",
+    phases: ["Business Process Mapping", "Solution Architecture & Master Data", "Sales, Orders & Fulfilment", "UAT, Training & Cutover", "UAT, Training & Cutover"],
+  },
+  "mobile-app": {
+    category: "Mobile App Delivery",
+    phases: ["Product Discovery & User Flows", "Mobile UI/UX & Design System", "iOS & Android Development", "Device, Performance & Accessibility QA", "App Store Release & Monitoring"],
+  },
+  "custom-software": {
+    category: "Custom Software Delivery",
+    phases: ["Discovery & Business Analysis", "Architecture & Technical Design", "Application Development", "QA, UAT & Documentation", "Deployment, Training & Support"],
+  },
+};
 
 const readJson = (path, fallback = null) => {
   if (!existsSync(path)) return fallback;
@@ -58,34 +80,45 @@ const detectProject = () => {
   };
 };
 
-const createTemplate = () => {
+const createTemplate = (requestedType) => {
   const detected = detectProject();
+  const detectedType = detected.stack.some((item) => /react-native|expo|flutter/i.test(item))
+    ? "mobile-app"
+    : detected.stack.some((item) => /next|gatsby|astro|wordpress|shopify/i.test(item))
+      ? "website"
+      : "custom-software";
+  const projectType = requestedType || detectedType;
+  const deliveryTemplate = deliveryTemplates[projectType];
+  if (!deliveryTemplate) {
+    throw new Error(`Unknown template "${projectType}". Use: ${Object.keys(deliveryTemplates).join(", ")}.`);
+  }
   const projectId = slug(detected.name);
   const tasks = [
-    task("DISC-01", "Define project goals and success metrics", "discovery", { priority: "high", category: "Planning & Analysis" }),
-    task("DISC-02", "Document users, stakeholders and requirements", "discovery", { priority: "high", category: "Planning & Analysis" }),
-    task("DISC-03", "Identify risks, dependencies and delivery constraints", "discovery", { category: "Planning & Analysis" }),
-    task("FOUND-01", "Confirm architecture and technical decisions", "foundation", { priority: "high", category: "Design & Architecture" }),
-    task("FOUND-02", "Configure local development environment", "foundation", { category: "Development" }),
-    task("FOUND-03", "Define data model and integration contracts", "foundation", { category: "Design & Architecture" }),
-    task("BUILD-01", "Implement the primary user workflow", "implementation", { priority: "high", category: "Development" }),
-    task("BUILD-02", "Implement navigation, responsive UI and accessibility", "implementation", { category: "Development" }),
-    task("BUILD-03", "Implement persistence and external integrations", "implementation", { priority: "high", category: "Development" }),
-    task("QA-01", "Add automated unit and integration tests", "quality", { priority: "high", category: "Testing & Quality Assurance" }),
-    task("QA-02", "Run security, privacy and dependency review", "quality", { priority: "high", category: "Testing & Quality Assurance" }),
-    task("QA-03", "Complete documentation and acceptance testing", "quality", { category: "Testing & Quality Assurance" }),
-    task("REL-01", "Configure CI/CD and production environment", "release", { priority: "high", category: "Deployment & Maintenance" }),
-    task("REL-02", "Deploy production release and run smoke tests", "release", { priority: "high", category: "Deployment & Maintenance" }),
-    task("REL-03", "Configure monitoring and post-release review", "release", { category: "Deployment & Maintenance" }),
+    task("DISC-01", "Define project goals and success metrics", "discovery", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[0] }),
+    task("DISC-02", "Document users, stakeholders and requirements", "discovery", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[0] }),
+    task("DISC-03", "Identify risks, dependencies and delivery constraints", "discovery", { category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[0] }),
+    task("FOUND-01", "Confirm architecture and technical decisions", "foundation", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[1] }),
+    task("FOUND-02", "Configure local development environment", "foundation", { category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[1] }),
+    task("FOUND-03", "Define data model and integration contracts", "foundation", { category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[1] }),
+    task("BUILD-01", "Implement the primary user workflow", "implementation", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[2] }),
+    task("BUILD-02", "Implement navigation, responsive UI and accessibility", "implementation", { category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[2] }),
+    task("BUILD-03", "Implement persistence and external integrations", "implementation", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[2] }),
+    task("QA-01", "Add automated unit and integration tests", "quality", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[3] }),
+    task("QA-02", "Run security, privacy and dependency review", "quality", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[3] }),
+    task("QA-03", "Complete documentation and acceptance testing", "quality", { category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[3] }),
+    task("REL-01", "Configure CI/CD and production environment", "release", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[4] }),
+    task("REL-02", "Deploy production release and run smoke tests", "release", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[4] }),
+    task("REL-03", "Configure monitoring and post-release review", "release", { category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[4] }),
   ];
   if (detected.stack.some((item) => /firebase|supabase|auth|passport|oauth/i.test(item))) {
-    tasks.splice(8, 0, task("BUILD-AUTH", "Implement authentication and authorization boundaries", "implementation", { priority: "high", category: "Development" }));
+    tasks.splice(8, 0, task("BUILD-AUTH", "Implement authentication and authorization boundaries", "implementation", { priority: "high", category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[2] }));
   }
   if (detected.stack.some((item) => /react|vue|svelte|angular|next/i.test(item))) {
-    tasks.splice(8, 0, task("BUILD-UI", "Build reusable UI components and application states", "implementation", { category: "Development" }));
+    tasks.splice(8, 0, task("BUILD-UI", "Build reusable UI components and application states", "implementation", { category: deliveryTemplate.category, subcategory: deliveryTemplate.phases[2] }));
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    projectType,
     externalId: projectId,
     name: detected.name,
     description: detected.description,
@@ -119,10 +152,10 @@ const ensureIgnored = () => {
   writeFileSync(ignorePath, current);
 };
 
-const init = (force = false) => {
+const init = (force = false, projectType = null) => {
   mkdirSync(orbitDir, { recursive: true });
   if (existsSync(manifestPath) && !force) throw new Error(`${manifestPath} already exists. Use init --force to replace it.`);
-  const manifest = createTemplate();
+  const manifest = createTemplate(projectType);
   writeJson(manifestPath, manifest);
   writeJson(statePath, { lastCommit: manifest.repository.lastCommit || null, lastSyncedAt: null });
   ensureIgnored();
@@ -231,13 +264,19 @@ const installHook = () => {
 
 const [command = "help", ...args] = process.argv.slice(2);
 try {
-  if (command === "init") init(args.includes("--force"));
+  if (command === "init") {
+    const templateFlag = args.find((arg) => arg.startsWith("--template="));
+    const templateIndex = args.indexOf("--template");
+    const projectType = templateFlag?.split("=")[1] ||
+      (templateIndex >= 0 ? args[templateIndex + 1] : null);
+    init(args.includes("--force"), projectType);
+  }
   else if (command === "configure") await configure(args[0]);
   else if (command === "sync") await sync();
   else if (command === "complete") await complete(args);
   else if (command === "install-hook") installHook();
   else {
-    process.stdout.write("ASC-OS PM CLI\n\nCommands:\n  init [--force]       Generate .orbit/project.json\n  configure [api-key]  Store the API key locally\n  sync                 Sync the manifest and commit completion markers\n  complete TASK-ID     Complete tasks and sync immediately\n  install-hook         Sync automatically before Git/VS Code pushes\n");
+    process.stdout.write("ASC-OS PM CLI\n\nCommands:\n  init [--template TYPE] [--force]  Generate a schema-v2 project manifest\n  configure [api-key]               Store the API key locally\n  sync                              Sync the manifest and commit completion markers\n  complete TASK-ID                  Complete tasks and sync immediately\n  install-hook                      Sync automatically before Git/VS Code pushes\n\nTemplates: website, crm, erp, mobile-app, custom-software\n");
   }
 } catch (error) {
   process.stderr.write(`ASC-OS sync error: ${error.message}\n`);
