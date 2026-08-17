@@ -3,6 +3,7 @@ node_modules
 .DS_Store
 dist
 .firebase
+.netlify
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
