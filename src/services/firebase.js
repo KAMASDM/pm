@@ -436,6 +436,28 @@ export const firebaseService = {
   },
 
   // Categories
+  async ensureDefaultCategories(categoryDefinitions) {
+    const snapshot = await getDocs(collection(db, "categories"));
+    const existingNames = new Set(
+      snapshot.docs.map((categoryDoc) => categoryDoc.data().name)
+    );
+    const missing = categoryDefinitions.filter(
+      (category) => !existingNames.has(category.name)
+    );
+    if (missing.length === 0) return 0;
+
+    const batch = writeBatch(db);
+    missing.forEach(({ id, ...category }) => {
+      batch.set(doc(db, "categories", id), {
+        ...category,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+    return missing.length;
+  },
+
   async createCategory(categoryData) {
     try {
       const docRef = await addDoc(collection(db, "categories"), {

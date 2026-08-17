@@ -8,6 +8,7 @@ import {
   removeClientProjectAccess,
 } from "../services/firebase";
 import useAuth from "../hooks/useAuth";
+import { defaultCategories } from "../utils/projectTemplates";
 
 const ProjectContext = createContext();
 
@@ -50,6 +51,7 @@ export const ProjectProvider = ({ children }) => {
           setEmployees([]);
           setCategories([]);
         } else if (isTeamMember) {
+          await firebaseService.ensureDefaultCategories(defaultCategories);
           const [projectsData, tasksData, employeesData, categoriesData] =
             await Promise.all([
               firebaseService.getProjects(),
@@ -128,6 +130,7 @@ export const ProjectProvider = ({ children }) => {
   const loadCategories = async () => {
     if (!isTeamMember) return;
     try {
+      await firebaseService.ensureDefaultCategories(defaultCategories);
       const categoriesData = await firebaseService.getCategories();
       setCategories(categoriesData);
     } catch (error) {

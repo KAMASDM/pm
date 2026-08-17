@@ -51,6 +51,7 @@ import {
   ContentCopy,
 } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
+import { getProjectTemplate, projectTemplates } from "../../utils/projectTemplates";
 
 const steps = [
   {
@@ -59,8 +60,8 @@ const steps = [
     icon: <FolderOpen />,
   },
   {
-    label: "Task Categories",
-    description: "Select relevant categories and tasks for the project",
+    label: "Delivery Scope",
+    description: "Review the category and workstreams supplied by the template",
     icon: <Assignment />,
   },
   {
@@ -123,6 +124,7 @@ const CreateProject = () => {
   } = useProject();
 
   const [formData, setFormData] = useState({
+    projectType: "",
     name: "",
     description: "",
     status: "planning",
@@ -180,6 +182,7 @@ const CreateProject = () => {
         setIsEditMode(true);
         setFormData({
           name: existingProject.name || "",
+          projectType: existingProject.projectType || "custom-software",
           description: existingProject.description || "",
           status: existingProject.status || "planning",
           priority: existingProject.priority || "medium",
@@ -218,6 +221,39 @@ const CreateProject = () => {
 
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: null }));
+    }
+  };
+
+  const handleTemplateChange = (projectType) => {
+    const template = getProjectTemplate(projectType);
+    const category = categories.find(
+      (item) =>
+        item.projectType === projectType || item.name === template?.categoryName
+    );
+    setFormData((prev) => ({
+      ...prev,
+      projectType,
+      selectedCategories: category ? [category.id] : [],
+      selectedTasks: category
+        ? {
+            [category.id]: Object.fromEntries(
+              (category.subcategories || []).map((subcategory) => [
+                subcategory.name,
+                (subcategory.tasks || []).map((task) => ({
+                  ...task,
+                  selected: true,
+                })),
+              ])
+            ),
+          }
+        : {},
+    }));
+    if (errors.projectType || errors.categories) {
+      setErrors((prev) => ({
+        ...prev,
+        projectType: null,
+        categories: null,
+      }));
     }
   };
 
@@ -273,6 +309,8 @@ const CreateProject = () => {
     const newErrors = {};
     switch (step) {
       case 0:
+        if (!formData.projectType)
+          newErrors.projectType = "Select a delivery template.";
         if (!formData.name.trim()) newErrors.name = "Project name is required.";
         if (!formData.description.trim())
           newErrors.description = "Project description is required.";
@@ -341,6 +379,8 @@ const CreateProject = () => {
     }));
 
     const projectPayload = {
+      projectType: formData.projectType,
+      templateName: getProjectTemplate(formData.projectType)?.name || "",
       name: formData.name,
       description: formData.description,
       status: formData.status,
@@ -447,6 +487,61 @@ const CreateProject = () => {
       case 0:
         return (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                Delivery template
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                This preloads the right delivery categories. Milestones, tasks, and
+                milestone deadlines are then managed from the project workspace.
+              </Typography>
+              {errors.projectType && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {errors.projectType}
+                </Alert>
+              )}
+              <Grid container spacing={1.5}>
+                {projectTemplates.map((template) => {
+                  const selected = formData.projectType === template.id;
+                  return (
+                    <Grid item xs={12} sm={6} md={4} key={template.id}>
+                      <Card
+                        variant="outlined"
+                        onClick={() => handleTemplateChange(template.id)}
+                        sx={{
+                          p: 2,
+                          height: "100%",
+                          cursor: "pointer",
+                          borderWidth: 2,
+                          borderColor: selected ? template.color : "divider",
+                          bgcolor: selected ? `${template.color}0D` : "background.paper",
+                          boxShadow: selected ? `0 8px 24px ${template.color}20` : "none",
+                        }}
+                      >
+                        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.25 }}>
+                          <Box
+                            sx={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: "50%",
+                              bgcolor: template.color,
+                              mt: 0.6,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Box>
+                            <Typography fontWeight={700}>{template.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {template.description}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Card>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Box>
             <TextField
               fullWidth
               label="Project Name"
@@ -606,8 +701,9 @@ const CreateProject = () => {
             </Collapse>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
               {" "}
-              Select categories for your project. Default tasks will be
-              included. You can then deselect specific tasks.{" "}
+              The selected project template has preloaded its delivery category
+              and subcategories. Tasks are created inside milestones from the
+              project workspace.{" "}
             </Typography>
             <Grid container spacing={2}>
               {categories.map((category) => {

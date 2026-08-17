@@ -153,6 +153,17 @@ const CreateTask = ({
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const selectedProject = (projects || []).find(
+    (project) => project.id === formData.projectId
+  );
+  const availableCategories = selectedProject?.selectedCategories?.length
+    ? (categories || []).filter((category) =>
+        selectedProject.selectedCategories.includes(category.id)
+      )
+    : categories || [];
+  const selectedCategory = (categories || []).find(
+    (category) => category.name === formData.category
+  );
 
   useEffect(() => {
     if (initialData) {
@@ -212,6 +223,12 @@ const CreateTask = ({
       case 1:
         if (!formData.category.trim())
           newErrors.category = "Category is required";
+        if (
+          selectedCategory?.subcategories?.length > 0 &&
+          !formData.subcategory.trim()
+        ) {
+          newErrors.subcategory = "Subcategory is required";
+        }
         break;
     }
     setErrors(newErrors);
@@ -308,6 +325,8 @@ const CreateTask = ({
                     onChange={(e) => {
                       handleInputChange("projectId", e.target.value);
                       handleInputChange("milestoneId", "");
+                      handleInputChange("category", "");
+                      handleInputChange("subcategory", "");
                     }}
                     MenuProps={selectMenuProps}
                     sx={selectSx}
@@ -367,31 +386,65 @@ const CreateTask = ({
       case 1: // Categorization
         return (
           <Box sx={{ mt: 2 }}>
-            <FormControl fullWidth error={!!errors.category} sx={{ mb: 3 }}>
-              <InputLabel>Category</InputLabel>
-              <Select
-                value={formData.category}
-                label="Category"
-                onChange={(e) => handleInputChange("category", e.target.value)}
-                MenuProps={selectMenuProps}
-                sx={selectSx}
-              >
-                {(categories || []).length === 0 && (
-                  <MenuItem disabled>No categories available</MenuItem>
-                )}
-                {(categories || []).map((category) => (
-                  <MenuItem key={category.id} value={category.name}>
-                    {category.name}
-                  </MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>
-                {errors.category ||
-                  ((categories || []).length === 0
-                    ? "Create a category before adding a task."
-                    : "Choose how this task should be grouped.")}
-              </FormHelperText>
-            </FormControl>
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth error={!!errors.category}>
+                  <InputLabel>Category</InputLabel>
+                  <Select
+                    value={formData.category}
+                    label="Category"
+                    onChange={(e) => {
+                      handleInputChange("category", e.target.value);
+                      handleInputChange("subcategory", "");
+                    }}
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
+                  >
+                    {availableCategories.length === 0 && (
+                      <MenuItem disabled>No categories available</MenuItem>
+                    )}
+                    {availableCategories.map((category) => (
+                      <MenuItem key={category.id} value={category.name}>
+                        {category.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>
+                    {errors.category ||
+                      (availableCategories.length === 0
+                        ? "No category is configured for this project."
+                        : "Filtered by the project's delivery template.")}
+                  </FormHelperText>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl
+                  fullWidth
+                  error={!!errors.subcategory}
+                  disabled={!formData.category}
+                >
+                  <InputLabel>Subcategory</InputLabel>
+                  <Select
+                    value={formData.subcategory}
+                    label="Subcategory"
+                    onChange={(e) =>
+                      handleInputChange("subcategory", e.target.value)
+                    }
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
+                  >
+                    {(selectedCategory?.subcategories || []).map((subcategory) => (
+                      <MenuItem key={subcategory.name} value={subcategory.name}>
+                        {subcategory.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>
+                    {errors.subcategory || "Choose the specific delivery workstream."}
+                  </FormHelperText>
+                </FormControl>
+              </Grid>
+            </Grid>
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>

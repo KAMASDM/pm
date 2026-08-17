@@ -47,6 +47,9 @@ import {
 import useProject from "../../hooks/useProject";
 import Milestone from "./Milestone";
 import ClientManager from "../clients/ClientManager";
+import ProjectInsights from "./ProjectInsights";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { getProjectTemplate } from "../../utils/projectTemplates";
 
 const statusOptions = [
   { value: "planning", label: "Planning", color: "#64B5F6" },
@@ -100,6 +103,7 @@ const ProjectDetails = () => {
   });
   const [showAddMilestone, setShowAddMilestone] = useState(false);
   const [newMilestoneName, setNewMilestoneName] = useState("");
+  const [newMilestoneDueDate, setNewMilestoneDueDate] = useState(null);
   const [editingMilestone, setEditingMilestone] = useState(null);
 
   const tasks = getTasksByProject(id);
@@ -129,14 +133,16 @@ const ProjectDetails = () => {
   }, [id, projects]);
 
   const handleAddMilestone = async () => {
-    if (newMilestoneName.trim() === "") return;
+    if (newMilestoneName.trim() === "" || !newMilestoneDueDate) return;
     const milestoneData = {
       name: newMilestoneName,
       projectId: id,
       status: "upcoming",
+      dueDate: newMilestoneDueDate,
     };
     await createMilestone(milestoneData);
     setNewMilestoneName("");
+    setNewMilestoneDueDate(null);
     setShowAddMilestone(false);
   };
 
@@ -284,6 +290,7 @@ const ProjectDetails = () => {
   const projectPriorityColor =
     priorityOptions.find((p) => p.value === project.priority)?.color ||
     theme.palette.text.secondary;
+  const deliveryTemplate = getProjectTemplate(project.projectType);
 
   return (
     <Fade in={true} timeout={600}>
@@ -510,9 +517,18 @@ const ProjectDetails = () => {
                     }}
                   />
                   <Tab
-                    label="Activity"
+                    label="Insights"
                     id="project-tab-2"
                     aria-controls="project-tabpanel-2"
+                    sx={{
+                      minWidth: isMobile ? "auto" : 120,
+                      textTransform: "none",
+                    }}
+                  />
+                  <Tab
+                    label="Activity"
+                    id="project-tab-3"
+                    aria-controls="project-tabpanel-3"
                     sx={{
                       minWidth: isMobile ? "auto" : 120,
                       textTransform: "none",
@@ -535,6 +551,24 @@ const ProjectDetails = () => {
                     <Grid item xs={12} md={4}>
                       {showAddMilestone ? (
                         <Paper sx={{ p: 2 }}>
+                          {deliveryTemplate?.milestoneSuggestions?.length > 0 && (
+                            <Box sx={{ mb: 2 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Suggested for {deliveryTemplate.name}
+                              </Typography>
+                              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 1 }}>
+                                {deliveryTemplate.milestoneSuggestions.map((suggestion) => (
+                                  <Chip
+                                    key={suggestion}
+                                    label={suggestion}
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={() => setNewMilestoneName(suggestion)}
+                                  />
+                                ))}
+                              </Box>
+                            </Box>
+                          )}
                           <TextField
                             fullWidth
                             label="New Milestone Name"
@@ -543,9 +577,22 @@ const ProjectDetails = () => {
                               setNewMilestoneName(e.target.value)
                             }
                             autoFocus
+                            sx={{ mb: 2 }}
+                          />
+                          <DatePicker
+                            label="Expected deadline"
+                            value={newMilestoneDueDate}
+                            onChange={setNewMilestoneDueDate}
+                            minDate={new Date()}
+                            slotProps={{ textField: { fullWidth: true, required: true } }}
                           />
                           <Box sx={{ mt: 1 }}>
-                            <Button onClick={handleAddMilestone}>Add</Button>
+                            <Button
+                              onClick={handleAddMilestone}
+                              disabled={!newMilestoneName.trim() || !newMilestoneDueDate}
+                            >
+                              Add milestone
+                            </Button>
                             <Button
                               onClick={() => setShowAddMilestone(false)}
                               color="error"
@@ -600,6 +647,19 @@ const ProjectDetails = () => {
                     role="tabpanel"
                     id="project-tabpanel-2"
                     aria-labelledby="project-tab-2"
+                  >
+                    <ProjectInsights
+                      project={project}
+                      tasks={tasks}
+                      milestones={milestones}
+                    />
+                  </Box>
+                )}
+                {tabValue === 3 && (
+                  <Box
+                    role="tabpanel"
+                    id="project-tabpanel-3"
+                    aria-labelledby="project-tab-3"
                   >
                     <Typography
                       variant="subtitle1"
@@ -837,10 +897,29 @@ const ProjectDetails = () => {
                 })
               }
             />
+            <DatePicker
+              label="Expected deadline"
+              value={
+                editingMilestone?.dueDate?.toDate
+                  ? editingMilestone.dueDate.toDate()
+                  : editingMilestone?.dueDate
+                  ? new Date(editingMilestone.dueDate)
+                  : null
+              }
+              onChange={(value) =>
+                setEditingMilestone({ ...editingMilestone, dueDate: value })
+              }
+              slotProps={{ textField: { fullWidth: true, required: true, sx: { mt: 2 } } }}
+            />
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setEditingMilestone(null)}>Cancel</Button>
-            <Button onClick={handleUpdateMilestone}>Save</Button>
+            <Button
+              onClick={handleUpdateMilestone}
+              disabled={!editingMilestone?.name?.trim() || !editingMilestone?.dueDate}
+            >
+              Save
+            </Button>
           </DialogActions>
         </Dialog>
         <Menu

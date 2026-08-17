@@ -27,6 +27,9 @@ import {
   useTheme,
   useMediaQuery,
   CircularProgress,
+  Alert,
+  Autocomplete,
+  FormHelperText,
 } from "@mui/material";
 import { Add, Search, Delete, Email, Phone, Group } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
@@ -153,6 +156,31 @@ const skillOptions = [
   "Sprout Social",
 ];
 
+const selectMenuProps = {
+  PaperProps: {
+    sx: {
+      mt: 0.75,
+      maxHeight: 340,
+      bgcolor: "background.paper",
+      color: "text.primary",
+      border: "1px solid",
+      borderColor: "divider",
+      boxShadow: "0 12px 32px rgba(45, 45, 45, 0.16)",
+      "& .MuiMenuItem-root": { minHeight: 44, color: "text.primary" },
+      "& .MuiMenuItem-root.Mui-selected": {
+        bgcolor: "rgba(107, 91, 149, 0.14)",
+        fontWeight: 600,
+      },
+    },
+  },
+};
+
+const selectSx = {
+  bgcolor: "background.paper",
+  color: "text.primary",
+  "& .MuiSelect-select": { color: "text.primary", fontWeight: 500 },
+};
+
 const EmployeeList = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -179,6 +207,7 @@ const EmployeeList = () => {
     department: "",
     skills: [],
   });
+  const [formErrors, setFormErrors] = useState({});
 
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [confirmDialogTitle, setConfirmDialogTitle] = useState("");
@@ -188,9 +217,9 @@ const EmployeeList = () => {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const filteredEmployees = employees.filter((employee) => {
-    const employeeName = employee.name?.toLowerCase();
-    const employeeEmail = employee.email?.toLowerCase();
-    const employeeRole = employee.role?.toLowerCase();
+    const employeeName = (employee.name || "").toLowerCase();
+    const employeeEmail = (employee.email || "").toLowerCase();
+    const employeeRole = (employee.role || "").toLowerCase();
 
     const matchesSearch =
       employeeName.includes(searchTerm.toLowerCase()) ||
@@ -212,6 +241,7 @@ const EmployeeList = () => {
 
   const handleOpenDialog = (type, employee = null) => {
     setDialogType(type);
+    setFormErrors({});
     if (employee) {
       setFormData({
         name: employee.name,
@@ -247,29 +277,45 @@ const EmployeeList = () => {
       department: "",
       skills: [],
     });
+    setFormErrors({});
   };
 
   const handleSaveEmployee = async () => {
+    const nextErrors = {};
+    if (!formData.name.trim()) nextErrors.name = "Full name is required.";
+    if (!/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
+      nextErrors.email = "Enter a valid email address.";
+    }
+    if (!formData.role) nextErrors.role = "Select the member's primary role.";
+    if (!formData.department) nextErrors.department = "Select a department.";
+    setFormErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setIsUpdating(true);
     try {
       if (dialogType === "create") {
-        await createEmployee(formData);
+        await createEmployee({
+          ...formData,
+          email: formData.email.trim().toLowerCase(),
+        });
       } else {
         if (!selectedEmployee || !selectedEmployee.id) {
           console.log("No employee selected or missing ID");
           return;
         }
-        setIsUpdating(true);
-        try {
-          await updateEmployee(selectedEmployee.id, formData);
-        } catch (error) {
-          console.log("Error updating employee:", error);
-        } finally {
-          setIsUpdating(false);
-        }
+        await updateEmployee(selectedEmployee.id, {
+          ...formData,
+          email: formData.email.trim().toLowerCase(),
+        });
       }
       handleCloseDialog();
     } catch (error) {
       console.log("Error saving employee:", error);
+      setFormErrors({
+        submission: error.message || "The team member could not be saved.",
+      });
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -881,6 +927,14 @@ const EmployeeList = () => {
               : "Edit Team Member"}
           </DialogTitle>
           <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Add delivery details so assignments and workload insights remain accurate.
+            </Typography>
+            {formErrors.submission && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {formErrors.submission}
+              </Alert>
+            )}
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12} sm={6}>
                 <TextField
@@ -891,6 +945,8 @@ const EmployeeList = () => {
                     setFormData((prev) => ({ ...prev, name: e.target.value }))
                   }
                   required
+                  error={Boolean(formErrors.name)}
+                  helperText={formErrors.name}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -903,6 +959,8 @@ const EmployeeList = () => {
                     setFormData((prev) => ({ ...prev, email: e.target.value }))
                   }
                   required
+                  error={Boolean(formErrors.email)}
+                  helperText={formErrors.email}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -916,13 +974,19 @@ const EmployeeList = () => {
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required error={Boolean(formErrors.role)}>
                   <InputLabel>Role</InputLabel>
                   <Select
                     value={formData.role}
                     label="Role"
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, role: e.target.value }))
+                    }
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
+                    renderValue={(value) =>
+                      roleOptions.find((option) => option.value === value)?.label ||
+                      "Select role"
                     }
                   >
                     {roleOptions.slice(1).map((option) => (
@@ -947,10 +1011,13 @@ const EmployeeList = () => {
                       </MenuItem>
                     ))}
                   </Select>
+                  <FormHelperText>
+                    {formErrors.role || "Used for assignment and capacity reporting."}
+                  </FormHelperText>
                 </FormControl>
               </Grid>
               <Grid item xs={12}>
-                <FormControl fullWidth>
+                <FormControl fullWidth required error={Boolean(formErrors.department)}>
                   <InputLabel>Department</InputLabel>
                   <Select
                     value={formData.department}
@@ -961,6 +1028,8 @@ const EmployeeList = () => {
                         department: e.target.value,
                       }))
                     }
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
                   >
                     {departmentOptions.map((dept) => (
                       <MenuItem key={dept} value={dept}>
@@ -968,36 +1037,29 @@ const EmployeeList = () => {
                       </MenuItem>
                     ))}
                   </Select>
+                  <FormHelperText>{formErrors.department}</FormHelperText>
                 </FormControl>
               </Grid>
               <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Skills</InputLabel>
-                  <Select
-                    multiple
-                    value={formData.skills}
-                    label="Skills"
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        skills: e.target.value,
-                      }))
-                    }
-                    renderValue={(selected) => (
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {skillOptions.map((skill) => (
-                      <MenuItem key={skill} value={skill}>
-                        {skill}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  multiple
+                  options={skillOptions}
+                  value={formData.skills || []}
+                  onChange={(event, value) =>
+                    setFormData((prev) => ({ ...prev, skills: value }))
+                  }
+                  disableCloseOnSelect
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Skills"
+                      placeholder={
+                        formData.skills?.length ? "Add another skill" : "Search skills"
+                      }
+                      helperText="Search and select every skill relevant to this member."
+                    />
+                  )}
+                />
               </Grid>
             </Grid>
           </DialogContent>

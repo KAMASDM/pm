@@ -21,6 +21,8 @@ import {
   Edit,
   Delete,
   Flag,
+  CalendarToday,
+  WarningAmber,
 } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
 import TaskCard from "../tasks/TaskCard";
@@ -49,6 +51,14 @@ const Milestone = ({ milestone, onMilestoneDelete, onMilestoneEdit }) => {
           milestoneTasks.length) *
         100
       : 0;
+  const dueDate = milestone.dueDate?.toDate
+    ? milestone.dueDate.toDate()
+    : milestone.dueDate
+    ? new Date(milestone.dueDate)
+    : null;
+  const isOverdue = Boolean(
+    dueDate && dueDate < new Date() && progress < 100
+  );
 
   return (
     <>
@@ -69,10 +79,25 @@ const Milestone = ({ milestone, onMilestoneDelete, onMilestoneEdit }) => {
           }}
           onClick={() => setExpanded(!expanded)}
         >
-          <Box sx={{ display: "flex", alignItems: "center" }}>
+          <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
             <Flag sx={{ mr: 1, color: "primary.main" }} />
             <Typography variant="h6">{milestone.name}</Typography>
-            <Chip label={`${milestoneTasks.length} tasks`} sx={{ ml: 2 }} />
+            <Chip label={`${milestoneTasks.length} tasks`} size="small" />
+            <Chip
+              icon={isOverdue ? <WarningAmber /> : <CalendarToday />}
+              label={
+                dueDate
+                  ? `${isOverdue ? "Overdue · " : "Due "}${dueDate.toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}`
+                  : "Deadline not set"
+              }
+              size="small"
+              color={isOverdue ? "error" : "default"}
+              variant={isOverdue ? "filled" : "outlined"}
+            />
           </Box>
           <Box>
             <IconButton onClick={handleMenuOpen} aria-label="Milestone options">
