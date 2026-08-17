@@ -119,6 +119,21 @@ export const removeClientProjectAccess = async (clientData) => {
   return result.data;
 };
 
+export const createProjectApiKey = async (name) => {
+  const createKey = httpsCallable(functions, "createProjectApiKey");
+  return (await createKey({ name })).data;
+};
+
+export const listProjectApiKeys = async () => {
+  const listKeys = httpsCallable(functions, "listProjectApiKeys");
+  return (await listKeys()).data;
+};
+
+export const revokeProjectApiKey = async (keyId) => {
+  const revokeKey = httpsCallable(functions, "revokeProjectApiKey");
+  return (await revokeKey({ keyId })).data;
+};
+
 export const firebaseService = {
   // Projects
   async createProject(projectData) {

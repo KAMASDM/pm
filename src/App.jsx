@@ -33,6 +33,7 @@ const CategoryManager = lazy(() => import("./components/tasks/CategoryManager"))
 const EmployeeList = lazy(() => import("./components/employees/EmployeeList"));
 const ClientDashboard = lazy(() => import("./components/client/ClientDashboard"));
 const ClientProjectDetails = lazy(() => import("./components/client/ClientProjectDetails"));
+const ApiIntegration = lazy(() => import("./components/integrations/ApiIntegration"));
 
 function App() {
   const teamRoles = ["admin", "team"];
@@ -76,6 +77,7 @@ function App() {
                   <Route path="tasks/create" element={<RoleRoute allowedRoles={teamRoles}><CreateTask /></RoleRoute>} />
                   <Route path="categories" element={<RoleRoute allowedRoles={teamRoles}><CategoryManager /></RoleRoute>} />
                   <Route path="employees" element={<RoleRoute allowedRoles={teamRoles}><EmployeeList /></RoleRoute>} />
+                  <Route path="api" element={<RoleRoute allowedRoles={teamRoles}><ApiIntegration /></RoleRoute>} />
                   <Route
                     path="team"
                     element={<Navigate to="/employees" replace />}

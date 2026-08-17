@@ -9,8 +9,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "npm run test:rules",
-    "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.js\""
+    "test": "npm run test:rules && npm run test:api",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run tests/firestore.rules.test.js\"",
+    "test:api": "firebase emulators:exec --only firestore,functions \"node functions/scripts/test-sync-api.mjs\""
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

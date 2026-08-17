@@ -25,6 +25,7 @@ import {
   ExpandLess,
   ExpandMore,
   Visibility,
+  Api,
 } from "@mui/icons-material";
 import useAuth from "../../hooks/useAuth";
 
@@ -61,6 +62,12 @@ const menuItems = [
     text: "Team",
     icon: <People />,
     path: "/employees",
+    color: "#8B7EC8",
+  },
+  {
+    text: "API & VS Code",
+    icon: <Api />,
+    path: "/api",
     color: "#8B7EC8",
   },
 ];

@@ -1,4 +1,5 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 import process from "node:process";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -8,7 +9,7 @@ import {
   getFirestore,
 } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import {
   onDocumentCreated,
   onDocumentUpdated,
@@ -88,18 +89,17 @@ const queueNotification = async ({ recipientIds, title, body, type, projectId, t
   });
 };
 
-export const provisionClientAccount = onCall({ region }, async (request) => {
-  const { uid: actorId } = await requireTeam(request);
-  const projectId = String(request.data?.projectId || "");
-  const name = String(request.data?.name || "").trim();
-  const contactEmail = normalizeContactEmail(request.data?.email);
-  const company = String(request.data?.company || "").trim();
+const provisionClientForProject = async ({ actorId, projectId, name, email, company }) => {
+  const normalizedProjectId = String(projectId || "");
+  const normalizedName = String(name || "").trim();
+  const contactEmail = normalizeContactEmail(email);
+  const normalizedCompany = String(company || "").trim();
 
-  if (!projectId || !name || !contactEmail.includes("@")) {
+  if (!normalizedProjectId || !normalizedName || !contactEmail.includes("@")) {
     throw new HttpsError("invalid-argument", "Project, client name, and email are required.");
   }
 
-  const projectRef = db.doc(`projects/${projectId}`);
+  const projectRef = db.doc(`projects/${normalizedProjectId}`);
   const projectSnapshot = await projectRef.get();
   if (!projectSnapshot.exists) throw new HttpsError("not-found", "Project not found.");
 
@@ -122,8 +122,8 @@ export const provisionClientAccount = onCall({ region }, async (request) => {
     }
     clientId = profile.clientId;
     userRecord = await auth.getUser(profileDoc.id);
-    if (userRecord.displayName !== name) {
-      userRecord = await auth.updateUser(userRecord.uid, { displayName: name });
+    if (userRecord.displayName !== normalizedName) {
+      userRecord = await auth.updateUser(userRecord.uid, { displayName: normalizedName });
     }
   } else {
     clientId = await createUniqueClientId();
@@ -131,7 +131,7 @@ export const provisionClientAccount = onCall({ region }, async (request) => {
     userRecord = await auth.createUser({
       email: `${clientId.toLowerCase()}@${clientAuthDomain}`,
       password: temporaryPassword,
-      displayName: name,
+      displayName: normalizedName,
       emailVerified: true,
     });
     await auth.setCustomUserClaims(userRecord.uid, { role: "client" });
@@ -139,12 +139,13 @@ export const provisionClientAccount = onCall({ region }, async (request) => {
   }
 
   const now = Timestamp.now();
+  const wasAlreadyMember = (projectSnapshot.data().clientUserIds || []).includes(userRecord.uid);
   const clientRecord = {
     uid: userRecord.uid,
     id: clientId,
     clientId,
-    name,
-    company,
+    name: normalizedName,
+    company: normalizedCompany,
     role: "client",
     addedAt: now,
   };
@@ -163,9 +164,9 @@ export const provisionClientAccount = onCall({ region }, async (request) => {
       const profileData = {
         role: "client",
         clientId,
-        displayName: name,
+        displayName: normalizedName,
         contactEmail,
-        company,
+        company: normalizedCompany,
         active: true,
         updatedAt: FieldValue.serverTimestamp(),
         createdBy: actorId,
@@ -186,7 +187,7 @@ export const provisionClientAccount = onCall({ region }, async (request) => {
         updatedAt: FieldValue.serverTimestamp(),
       });
       transaction.set(
-        db.doc(`projects/${projectId}/clients/${userRecord.uid}`),
+        db.doc(`projects/${normalizedProjectId}/clients/${userRecord.uid}`),
         {
           ...clientRecord,
           contactEmail,
@@ -204,13 +205,15 @@ export const provisionClientAccount = onCall({ region }, async (request) => {
     throw error;
   }
 
-  await queueNotification({
-    recipientIds: [userRecord.uid],
-    title: `Welcome to ${projectSnapshot.data().name}`,
-    body: "Your private client workspace is ready.",
-    type: "client_provisioned",
-    projectId,
-  });
+  if (!wasAlreadyMember) {
+    await queueNotification({
+      recipientIds: [userRecord.uid],
+      title: `Welcome to ${projectSnapshot.data().name}`,
+      body: "Your private client workspace is ready.",
+      type: "client_provisioned",
+      projectId: normalizedProjectId,
+    });
+  }
 
   if (isNewAccount) {
     await db.collection("mail").add({
@@ -224,6 +227,17 @@ export const provisionClientAccount = onCall({ region }, async (request) => {
   }
 
   return { uid: userRecord.uid, clientId, temporaryPassword, isNewAccount };
+};
+
+export const provisionClientAccount = onCall({ region }, async (request) => {
+  const { uid: actorId } = await requireTeam(request);
+  return provisionClientForProject({
+    actorId,
+    projectId: request.data?.projectId,
+    name: request.data?.name,
+    email: request.data?.email,
+    company: request.data?.company,
+  });
 });
 
 export const resetClientAccess = onCall({ region }, async (request) => {
@@ -265,6 +279,307 @@ export const completePasswordChange = onCall({ region }, async (request) => {
   });
   return { completed: true };
 });
+
+const hashValue = (value) => createHash("sha256").update(String(value)).digest("hex");
+const stableDocumentId = (scope, externalId) =>
+  `sync_${hashValue(`${scope}:${externalId}`).slice(0, 32)}`;
+const cleanText = (value, maxLength = 500) =>
+  String(value || "").trim().slice(0, maxLength);
+const toOptionalTimestamp = (value) => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new HttpsError("invalid-argument", `Invalid date: ${value}`);
+  }
+  return Timestamp.fromDate(date);
+};
+
+const projectStatuses = new Set(["planning", "in-progress", "on-hold", "completed"]);
+const taskStatuses = new Set(["pending", "in-progress", "blocked", "completed"]);
+const milestoneStatuses = new Set(["upcoming", "in-progress", "completed"]);
+const priorities = new Set(["low", "medium", "high"]);
+const normalizeChoice = (value, allowed, fallback) =>
+  allowed.has(value) ? value : fallback;
+
+const getApiEndpoint = () =>
+  `https://${region}-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/projectSyncApi`;
+
+export const createProjectApiKey = onCall({ region }, async (request) => {
+  const { uid } = await requireTeam(request);
+  const name = cleanText(request.data?.name, 80);
+  if (!name) throw new HttpsError("invalid-argument", "Give this API key a name.");
+
+  const keyId = randomBytes(8).toString("hex");
+  const secret = randomBytes(32).toString("base64url");
+  const token = `orbit_sk_${keyId}_${secret}`;
+  await db.doc(`apiKeys/${keyId}`).set({
+    name,
+    keyId,
+    tokenHash: hashValue(token),
+    prefix: `orbit_sk_${keyId}`,
+    active: true,
+    scopes: ["projects:sync"],
+    createdBy: uid,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    lastUsedAt: null,
+  });
+  return { keyId, token, prefix: `orbit_sk_${keyId}`, endpoint: getApiEndpoint() };
+});
+
+export const listProjectApiKeys = onCall({ region }, async (request) => {
+  await requireTeam(request);
+  const snapshot = await db.collection("apiKeys").orderBy("createdAt", "desc").limit(100).get();
+  return {
+    endpoint: getApiEndpoint(),
+    keys: snapshot.docs.map((document) => {
+      const data = document.data();
+      return {
+        id: document.id,
+        name: data.name,
+        prefix: data.prefix,
+        active: data.active !== false,
+        scopes: data.scopes || [],
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
+        lastUsedAt: data.lastUsedAt?.toDate?.()?.toISOString() || null,
+      };
+    }),
+  };
+});
+
+export const revokeProjectApiKey = onCall({ region }, async (request) => {
+  await requireTeam(request);
+  const keyId = cleanText(request.data?.keyId, 80);
+  if (!keyId) throw new HttpsError("invalid-argument", "API key ID is required.");
+  const keyRef = db.doc(`apiKeys/${keyId}`);
+  if (!(await keyRef.get()).exists) throw new HttpsError("not-found", "API key not found.");
+  await keyRef.update({ active: false, revokedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  return { revoked: true };
+});
+
+const authenticateApiRequest = async (request) => {
+  const authorization = String(request.get("authorization") || "");
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  const match = /^orbit_sk_([a-f0-9]{16})_([A-Za-z0-9_-]{40,})$/.exec(token);
+  if (!match) return null;
+  const keySnapshot = await db.doc(`apiKeys/${match[1]}`).get();
+  if (!keySnapshot.exists || keySnapshot.data().active === false) return null;
+  const expected = Buffer.from(keySnapshot.data().tokenHash, "hex");
+  const actual = Buffer.from(hashValue(token), "hex");
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
+  await keySnapshot.ref.update({ lastUsedAt: FieldValue.serverTimestamp() });
+  return { keyId: keySnapshot.id, ...keySnapshot.data() };
+};
+
+const sendApiError = (response, status, code, message, details = null) =>
+  response.status(status).json({ ok: false, error: { code, message, details } });
+
+const validateSyncManifest = (body) => {
+  const externalId = cleanText(body?.externalId, 160);
+  const name = cleanText(body?.name, 160);
+  if (!externalId || !name) {
+    throw new HttpsError("invalid-argument", "externalId and name are required.");
+  }
+  const tasks = Array.isArray(body.tasks) ? body.tasks : [];
+  const milestones = Array.isArray(body.milestones) ? body.milestones : [];
+  const clients = Array.isArray(body.clients) ? body.clients : [];
+  if (tasks.length > 250 || milestones.length > 50 || clients.length > 25) {
+    throw new HttpsError("invalid-argument", "A sync supports up to 250 tasks, 50 milestones, and 25 clients.");
+  }
+  const requireUniqueIds = (items, label) => {
+    const ids = items.map((item) => cleanText(item?.externalId, 160));
+    if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
+      throw new HttpsError("invalid-argument", `${label} require unique externalId values.`);
+    }
+  };
+  requireUniqueIds(tasks, "Tasks");
+  requireUniqueIds(milestones, "Milestones");
+  return { externalId, name, tasks, milestones, clients };
+};
+
+const syncProjectManifest = async (apiKey, body) => {
+  const { externalId, name, tasks, milestones, clients } = validateSyncManifest(body);
+  const projectId = stableDocumentId(apiKey.keyId, externalId);
+  const projectRef = db.doc(`projects/${projectId}`);
+  const projectSnapshot = await projectRef.get();
+  const existingProject = projectSnapshot.data() || {};
+  if (existingProject.integration?.apiKeyId && existingProject.integration.apiKeyId !== apiKey.keyId) {
+    throw new HttpsError("permission-denied", "This project belongs to another integration key.");
+  }
+
+  const now = Timestamp.now();
+  const completedTaskCount = tasks.filter((task) => task.status === "completed").length;
+  const inferredStatus = tasks.length > 0 && completedTaskCount === tasks.length
+    ? "completed"
+    : tasks.some((task) => task.status && task.status !== "pending")
+      ? "in-progress"
+      : "planning";
+  await projectRef.set({
+    name,
+    description: cleanText(body.description, 4000),
+    status: normalizeChoice(body.status, projectStatuses, inferredStatus),
+    priority: normalizeChoice(body.priority, priorities, "medium"),
+    dueDate: toOptionalTimestamp(body.dueDate),
+    assignedTo: existingProject.assignedTo || [],
+    teamMembers: existingProject.teamMembers || [],
+    clients: existingProject.clients || [],
+    clientUserIds: existingProject.clientUserIds || [],
+    createdBy: existingProject.createdBy || apiKey.createdBy,
+    createdByName: existingProject.createdByName || "VS Code integration",
+    createdAt: existingProject.createdAt || now,
+    updatedAt: now,
+    integration: {
+      provider: "orbit-vscode",
+      apiKeyId: apiKey.keyId,
+      externalId,
+      repository: {
+        url: cleanText(body.repository?.url, 500),
+        branch: cleanText(body.repository?.branch, 160),
+        provider: cleanText(body.repository?.provider, 80),
+      },
+      lastCommit: cleanText(body.repository?.lastCommit, 160),
+      lastSyncedAt: now,
+    },
+  }, { merge: true });
+
+  const milestoneIdByExternalId = new Map();
+  const milestoneRefs = milestones.map((milestone) => {
+    const milestoneExternalId = cleanText(milestone.externalId, 160);
+    const ref = db.doc(`milestones/${stableDocumentId(projectId, `milestone:${milestoneExternalId}`)}`);
+    milestoneIdByExternalId.set(milestoneExternalId, ref.id);
+    return ref;
+  });
+  const taskRefs = tasks.map((task) =>
+    db.doc(`tasks/${stableDocumentId(projectId, `task:${cleanText(task.externalId, 160)}`)}`)
+  );
+  const syncRefs = [...milestoneRefs, ...taskRefs];
+  const existingDocuments = syncRefs.length ? await db.getAll(...syncRefs) : [];
+  const existingByPath = new Map(existingDocuments.map((snapshot) => [snapshot.ref.path, snapshot.data()]));
+  const writer = db.bulkWriter();
+
+  milestones.forEach((milestone, index) => {
+    const ref = milestoneRefs[index];
+    const existing = existingByPath.get(ref.path) || {};
+    writer.set(ref, {
+      projectId,
+      name: cleanText(milestone.name, 200) || cleanText(milestone.externalId, 160),
+      description: cleanText(milestone.description, 2000),
+      status: normalizeChoice(milestone.status, milestoneStatuses, "upcoming"),
+      dueDate: toOptionalTimestamp(milestone.dueDate),
+      createdBy: existing.createdBy || apiKey.createdBy,
+      createdAt: existing.createdAt || now,
+      updatedAt: now,
+      integration: { apiKeyId: apiKey.keyId, externalId: cleanText(milestone.externalId, 160) },
+    }, { merge: true });
+  });
+  tasks.forEach((task, index) => {
+    const ref = taskRefs[index];
+    const existing = existingByPath.get(ref.path) || {};
+    writer.set(ref, {
+      projectId,
+      milestoneId: task.milestoneExternalId
+        ? milestoneIdByExternalId.get(cleanText(task.milestoneExternalId, 160)) || null
+        : null,
+      name: cleanText(task.name, 240) || cleanText(task.externalId, 160),
+      description: cleanText(task.description, 4000),
+      status: normalizeChoice(task.status, taskStatuses, "pending"),
+      priority: normalizeChoice(task.priority, priorities, "medium"),
+      category: cleanText(task.category, 120),
+      subcategory: cleanText(task.subcategory, 120),
+      assignedTo: existing.assignedTo || null,
+      assignedToName: cleanText(task.assignedToName, 160) || existing.assignedToName || "",
+      assignedToEmail: normalizeContactEmail(task.assignedToEmail) || existing.assignedToEmail || "",
+      dueDate: toOptionalTimestamp(task.dueDate),
+      estimatedHours: task.estimatedHours !== undefined
+        && task.estimatedHours !== null
+        && task.estimatedHours !== ""
+        && Number.isFinite(Number(task.estimatedHours))
+        ? Number(task.estimatedHours)
+        : existing.estimatedHours || "",
+      checklist: Array.isArray(task.checklist)
+        ? task.checklist.slice(0, 100).map((item) => ({
+          text: cleanText(item?.text, 500),
+          completed: Boolean(item?.completed),
+        }))
+        : existing.checklist || [],
+      createdBy: existing.createdBy || apiKey.createdBy,
+      createdByName: existing.createdByName || "VS Code integration",
+      createdAt: existing.createdAt || now,
+      updatedAt: now,
+      integration: { apiKeyId: apiKey.keyId, externalId: cleanText(task.externalId, 160) },
+    }, { merge: true });
+  });
+
+  if (body.replace === true) {
+    const [existingMilestones, existingTasks] = await Promise.all([
+      db.collection("milestones").where("projectId", "==", projectId).get(),
+      db.collection("tasks").where("projectId", "==", projectId).get(),
+    ]);
+    const retainedPaths = new Set([...milestoneRefs, ...taskRefs].map((ref) => ref.path));
+    [...existingMilestones.docs, ...existingTasks.docs]
+      .filter((document) =>
+        document.data().integration?.apiKeyId === apiKey.keyId && !retainedPaths.has(document.ref.path)
+      )
+      .forEach((document) => writer.delete(document.ref));
+  }
+  await writer.close();
+
+  const credentials = [];
+  for (const client of clients) {
+    const result = await provisionClientForProject({
+      actorId: apiKey.createdBy,
+      projectId,
+      name: client.name,
+      email: client.email,
+      company: client.company,
+    });
+    credentials.push({
+      email: normalizeContactEmail(client.email),
+      clientId: result.clientId,
+      temporaryPassword: result.temporaryPassword,
+      isNewAccount: result.isNewAccount,
+    });
+  }
+
+  return {
+    projectId,
+    externalId,
+    projectUrl: `/projects/${projectId}`,
+    counts: { tasks: tasks.length, milestones: milestones.length, clients: clients.length },
+    progress: tasks.length ? Math.round((completedTaskCount / tasks.length) * 100) : 0,
+    clientCredentials: credentials,
+    syncedAt: now.toDate().toISOString(),
+  };
+};
+
+export const projectSyncApi = onRequest(
+  { region, cors: true, timeoutSeconds: 120, maxInstances: 10 },
+  async (request, response) => {
+    if (request.method === "OPTIONS") return response.status(204).send("");
+    if (request.method === "GET" && request.path === "/v1/health") {
+      return response.json({ ok: true, service: "orbit-project-sync", version: 1 });
+    }
+    const apiKey = await authenticateApiRequest(request);
+    if (!apiKey) return sendApiError(response, 401, "unauthorized", "A valid Bearer API key is required.");
+    if (request.method !== "POST" || request.path !== "/v1/projects/sync") {
+      return sendApiError(response, 404, "not_found", "Use POST /v1/projects/sync.");
+    }
+    try {
+      const result = await syncProjectManifest(apiKey, request.body || {});
+      return response.status(200).json({ ok: true, data: result });
+    } catch (error) {
+      console.error("Project sync failed:", error);
+      const invalid = error instanceof HttpsError && error.code === "invalid-argument";
+      const forbidden = error instanceof HttpsError && error.code === "permission-denied";
+      return sendApiError(
+        response,
+        invalid ? 400 : forbidden ? 403 : 500,
+        error.code || "internal",
+        invalid || forbidden ? error.message : "Project sync failed."
+      );
+    }
+  }
+);
 
 export const removeClientFromProject = onCall({ region }, async (request) => {
   await requireTeam(request);

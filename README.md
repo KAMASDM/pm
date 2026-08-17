@@ -101,6 +101,40 @@ Users are asked for browser notification permission only after interacting with 
 
 For email, install Firebase's **Trigger Email** extension and configure it to watch the `mail` collection. Client applications cannot read or write that collection.
 
+## VS Code project sync API
+
+Team users can open **API & VS Code** in the application to create and revoke integration keys. API key secrets are generated once, stored only as SHA-256 hashes, and cannot be read from Firestore or recovered later.
+
+Connect any Git repository from its root:
+
+```bash
+mkdir -p .orbit
+curl -fsSL https://learntospeak-b7404.web.app/orbit-pm.mjs -o .orbit/orbit-pm.mjs
+node .orbit/orbit-pm.mjs init
+node .orbit/orbit-pm.mjs configure
+node .orbit/orbit-pm.mjs sync
+node .orbit/orbit-pm.mjs install-hook
+```
+
+`init` inspects package metadata, README content, Git remote/branch, and detected dependencies. It creates `.orbit/project.json` with a five-milestone delivery lifecycle and a detailed task plan. Edit that file to match the real scope. Stable `externalId` values make every sync idempotent.
+
+The pre-push hook works with terminal Git and VS Code Source Control. Include completion markers in commit subjects to close tasks automatically before the push:
+
+```bash
+git commit -m "feat: finish client authentication [done:BUILD-AUTH]"
+git push
+```
+
+Useful CLI commands:
+
+- `node .orbit/orbit-pm.mjs complete TASK-ID` — complete one or more tasks and sync immediately.
+- `node .orbit/orbit-pm.mjs sync` — send the full manifest.
+- `node .orbit/orbit-pm.mjs install-hook` — preserve any existing pre-push hook and append Orbit sync.
+
+The REST endpoint is `POST /v1/projects/sync` on the `projectSyncApi` Function. Send the API key in `Authorization: Bearer <key>`. A manifest can manage project metadata, milestones, tasks, checklists, estimates, assignee display snapshots, and client provisioning. `replace: true` removes only integration-owned tasks and milestones omitted from the next manifest; manually created records remain untouched.
+
+Never commit `.orbit/config.local.json` or `.orbit/state.json`. The CLI adds both local-only files to the connected repository's `.gitignore` automatically.
+
 ## Quality gates
 
 ```bash
@@ -122,5 +156,6 @@ Security-rule tests prove that clients cannot read another client's project/task
 - `tasks/{taskId}` and `milestones/{milestoneId}` — project-linked delivery data
 - `notifications/{id}` — user-targeted in-app/push events
 - `mail/{id}` — server-only Trigger Email queue
+- `apiKeys/{keyId}` — server-only hashed VS Code/API credentials
 
 Never weaken `firestore.rules` to work around a query. Queries and data models must satisfy the tenant boundary, not bypass it.
