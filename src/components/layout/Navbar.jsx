@@ -101,7 +101,7 @@ const Navbar = ({ drawerWidth, onDrawerToggle, isMobile }) => {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              Orbit Projects
+              ASC-OS
             </Typography>
           </Box>
         </Box>

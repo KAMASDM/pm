@@ -134,10 +134,10 @@ const configure = async (providedToken) => {
   let token = providedToken;
   if (!token) {
     const prompt = createInterface({ input: process.stdin, output: process.stdout });
-    token = (await prompt.question("Orbit API key: ")).trim();
+    token = (await prompt.question("ASC-OS API key: ")).trim();
     prompt.close();
   }
-  if (!/^orbit_sk_[a-f0-9]{16}_[A-Za-z0-9_-]{40,}$/.test(token || "")) throw new Error("That does not look like an Orbit API key.");
+  if (!/^orbit_sk_[a-f0-9]{16}_[A-Za-z0-9_-]{40,}$/.test(token || "")) throw new Error("That does not look like an ASC-OS API key.");
   writeJson(localConfigPath, { apiKey: token, endpoint: defaultEndpoint });
   ensureIgnored();
   process.stdout.write(`Stored the key locally in ${localConfigPath}. This file is excluded from Git.\n`);
@@ -226,7 +226,7 @@ const installHook = () => {
     const block = `\n${marker}\nnode .orbit/orbit-pm.mjs sync || exit 1\n`;
     writeFileSync(hookPath, `${current.replace(/\s*$/, "\n")}${block}`, { mode: 0o755 });
   }
-  process.stdout.write(`Installed Orbit sync in ${hookPath}. VS Code pushes will now sync before sending commits.\n`);
+  process.stdout.write(`Installed ASC-OS sync in ${hookPath}. VS Code pushes will now sync before sending commits.\n`);
 };
 
 const [command = "help", ...args] = process.argv.slice(2);
@@ -237,9 +237,9 @@ try {
   else if (command === "complete") await complete(args);
   else if (command === "install-hook") installHook();
   else {
-    process.stdout.write("Orbit PM CLI\n\nCommands:\n  init [--force]       Generate .orbit/project.json\n  configure [api-key]  Store the API key locally\n  sync                 Sync the manifest and commit completion markers\n  complete TASK-ID     Complete tasks and sync immediately\n  install-hook         Sync automatically before Git/VS Code pushes\n");
+    process.stdout.write("ASC-OS PM CLI\n\nCommands:\n  init [--force]       Generate .orbit/project.json\n  configure [api-key]  Store the API key locally\n  sync                 Sync the manifest and commit completion markers\n  complete TASK-ID     Complete tasks and sync immediately\n  install-hook         Sync automatically before Git/VS Code pushes\n");
   }
 } catch (error) {
-  process.stderr.write(`Orbit sync error: ${error.message}\n`);
+  process.stderr.write(`ASC-OS sync error: ${error.message}\n`);
   process.exitCode = 1;
 }

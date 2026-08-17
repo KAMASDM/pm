@@ -96,7 +96,7 @@ const Login = () => {
             <Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 8 }}>
                 <BusinessCenter />
-                <Typography variant="h6" color="inherit">Orbit Projects</Typography>
+                <Typography variant="h6" color="inherit">ASC-OS</Typography>
               </Box>
               <Chip
                 label="Your work, beautifully clear"
@@ -123,7 +123,7 @@ const Login = () => {
           <Box sx={{ p: { xs: 3, sm: 6, md: 7 }, display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <Box sx={{ display: { xs: "flex", md: "none" }, alignItems: "center", gap: 1, mb: 4, color: "primary.main" }}>
               <BusinessCenter />
-              <Typography variant="h6">Orbit Projects</Typography>
+              <Typography variant="h6">ASC-OS</Typography>
             </Box>
             <Typography variant="h3" sx={{ mb: 1 }}>Welcome back</Typography>
             <Typography color="text.secondary" sx={{ mb: 4 }}>

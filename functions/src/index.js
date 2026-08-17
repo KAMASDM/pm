@@ -257,7 +257,7 @@ export const resetClientAccess = onCall({ region }, async (request) => {
     await db.collection("mail").add({
       to: [profile.contactEmail],
       message: {
-        subject: "Your Orbit Projects access was reset",
+        subject: "Your ASC-OS access was reset",
         text: `Client ID: ${profile.clientId}. Temporary password: ${temporaryPassword}.`,
         html: `<h2>Your portal access was reset</h2><p>Client ID: <strong>${profile.clientId}</strong></p><p>Temporary password: <strong>${escapeHtml(temporaryPassword)}</strong></p>`,
       },

@@ -157,7 +157,7 @@ const ApiIntegration = () => {
           <Box>
             <Chip label="Developer automation" sx={{ mb: 2, color: "white", bgcolor: "rgba(255,255,255,.13)" }} />
             <Typography variant="h3" color="inherit" gutterBottom>
-              Orbit Project Sync API
+              ASC-OS Project Sync API
             </Typography>
             <Typography sx={{ maxWidth: 720, color: "rgba(255,255,255,.74)" }}>
               Connect any VS Code repository, generate its project-management plan, and keep projects,
@@ -248,7 +248,7 @@ const ApiIntegration = () => {
               </Stack>
               <Typography color="text.secondary" sx={{ mb: 2 }}>
                 Put a task’s external ID in the commit subject. The pre-push hook marks it complete locally,
-                synchronizes Orbit, and recalculates project progress before Git pushes.
+                synchronizes ASC-OS, and recalculates project progress before Git pushes.
               </Typography>
               <CodeBlock onCopy={copy}>{commitExample}</CodeBlock>
               <Typography variant="body2" sx={{ mt: 2 }}>

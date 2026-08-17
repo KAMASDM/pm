@@ -1,6 +1,6 @@
 {
-  "name": "Orbit Projects",
-  "short_name": "Orbit",
+  "name": "ASC-OS",
+  "short_name": "ASC-OS",
   "description": "Private project delivery workspaces for teams and clients.",
   "start_url": "/",
   "display": "standalone",

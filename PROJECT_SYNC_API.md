@@ -1,6 +1,6 @@
-# Orbit Project Sync API
+# ASC-OS Project Sync API
 
-The project sync API turns a Git repository into the source of truth for an Orbit Projects delivery plan. It is designed for VS Code, CI pipelines, Git hooks, and other trusted developer automation.
+The project sync API turns a Git repository into the source of truth for an ASC-OS delivery plan. It is designed for VS Code, CI pipelines, Git hooks, and other trusted developer automation.
 
 ## Authentication
 
@@ -81,7 +81,7 @@ The hosted `orbit-pm.mjs` CLI supports:
 ```text
 init [--force]       Generate a complete starting PM template
 configure [api-key]  Save the key to ignored local configuration
-sync                 Reconcile the manifest with Orbit
+sync                 Reconcile the manifest with ASC-OS
 complete TASK-ID     Complete tasks and sync
 install-hook         Add automatic pre-push synchronization
 ```

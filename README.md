@@ -1,6 +1,6 @@
-# Orbit Projects
+# ASC-OS
 
-Orbit Projects is a secure, multi-tenant project-delivery workspace for internal teams and external clients. Team members manage projects, tasks, milestones, templates, employees, and client access. Clients receive a private portal ID and temporary password, change that password on first use, and can access only projects explicitly assigned to their Firebase UID.
+ASC-OS is a secure, multi-tenant project-delivery workspace for internal teams and external clients. Team members manage projects, tasks, milestones, templates, employees, and client access. Clients receive a private portal ID and temporary password, change that password on first use, and can access only projects explicitly assigned to their Firebase UID.
 
 ## Production architecture
 
@@ -135,7 +135,7 @@ Useful CLI commands:
 
 - `node .orbit/orbit-pm.mjs complete TASK-ID` — complete one or more tasks and sync immediately.
 - `node .orbit/orbit-pm.mjs sync` — send the full manifest.
-- `node .orbit/orbit-pm.mjs install-hook` — preserve any existing pre-push hook and append Orbit sync.
+- `node .orbit/orbit-pm.mjs install-hook` — preserve any existing pre-push hook and append ASC-OS sync.
 
 The REST endpoint is `POST /v1/projects/sync` on the `projectSyncApi` Function. Send the API key in `Authorization: Bearer <key>`. A manifest can manage project metadata, milestones, tasks, checklists, estimates, assignee display snapshots, and client provisioning. `replace: true` removes only integration-owned tasks and milestones omitted from the next manifest; manually created records remain untouched.
 

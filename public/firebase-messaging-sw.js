@@ -8,7 +8,7 @@ self.addEventListener("push", (event) => {
   }
   const notification = payload.notification || payload.data || {};
   event.waitUntil(
-    self.registration.showNotification(notification.title || "Orbit Projects", {
+    self.registration.showNotification(notification.title || "ASC-OS", {
       body: notification.body || "There is new activity in your workspace.",
       icon: "/orbit-mark.svg",
       badge: "/orbit-mark.svg",
