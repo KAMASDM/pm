@@ -6,6 +6,7 @@ import {
   Button,
   TextField,
   FormControl,
+  FormHelperText,
   InputLabel,
   Select,
   MenuItem,
@@ -84,6 +85,42 @@ const priorityOptions = [
   { value: "medium", label: "Medium", color: "#FFD700" },
   { value: "high", label: "High", color: "#DC3545" },
 ];
+
+const selectMenuProps = {
+  PaperProps: {
+    sx: {
+      mt: 0.75,
+      maxHeight: 320,
+      minWidth: 240,
+      bgcolor: "background.paper",
+      color: "text.primary",
+      border: "1px solid",
+      borderColor: "divider",
+      boxShadow: "0 12px 32px rgba(45, 45, 45, 0.16)",
+      "& .MuiMenuItem-root": {
+        color: "text.primary",
+        minHeight: 44,
+        whiteSpace: "normal",
+      },
+      "& .MuiMenuItem-root:hover": {
+        bgcolor: "rgba(107, 91, 149, 0.08)",
+      },
+      "& .MuiMenuItem-root.Mui-selected": {
+        bgcolor: "rgba(107, 91, 149, 0.14)",
+        fontWeight: 600,
+      },
+    },
+  },
+};
+
+const selectSx = {
+  bgcolor: "background.paper",
+  color: "text.primary",
+  "& .MuiSelect-select": {
+    color: "text.primary",
+    fontWeight: 500,
+  },
+};
 
 const CreateTask = ({
   projectId = null,
@@ -268,25 +305,28 @@ const CreateTask = ({
                   <Select
                     value={formData.projectId}
                     label="Project"
-                    onChange={(e) =>
-                      handleInputChange("projectId", e.target.value)
-                    }
-                    MenuProps={{
-                      PaperProps: {
-                        style: {
-                          maxHeight: 300,
-                          width: 'auto',
-                          minWidth: 250,
-                        },
-                      },
+                    onChange={(e) => {
+                      handleInputChange("projectId", e.target.value);
+                      handleInputChange("milestoneId", "");
                     }}
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
                   >
+                    {(projects || []).length === 0 && (
+                      <MenuItem disabled>No projects available</MenuItem>
+                    )}
                     {(projects || []).map((project) => (
                       <MenuItem key={project.id} value={project.id}>
                         {project.name}
                       </MenuItem>
                     ))}
                   </Select>
+                  <FormHelperText>
+                    {errors.projectId ||
+                      ((projects || []).length === 0
+                        ? "Create a project before adding a task."
+                        : "Choose the project this task belongs to.")}
+                  </FormHelperText>
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -298,16 +338,13 @@ const CreateTask = ({
                     onChange={(e) =>
                       handleInputChange("milestoneId", e.target.value)
                     }
-                    MenuProps={{
-                      PaperProps: {
-                        style: {
-                          maxHeight: 300,
-                          width: 'auto',
-                          minWidth: 250,
-                        },
-                      },
-                    }}
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
+                    disabled={!formData.projectId}
                   >
+                    <MenuItem value="">
+                      <em>No milestone</em>
+                    </MenuItem>
                     {(milestones || [])
                       .filter((m) => m.projectId === formData.projectId)
                       .map((milestone) => (
@@ -316,6 +353,11 @@ const CreateTask = ({
                         </MenuItem>
                       ))}
                   </Select>
+                  <FormHelperText>
+                    {formData.projectId
+                      ? "Optional — select a milestone for this task."
+                      : "Select a project first."}
+                  </FormHelperText>
                 </FormControl>
               </Grid>
             </Grid>
@@ -331,22 +373,24 @@ const CreateTask = ({
                 value={formData.category}
                 label="Category"
                 onChange={(e) => handleInputChange("category", e.target.value)}
-                MenuProps={{
-                  PaperProps: {
-                    style: {
-                      maxHeight: 300,
-                      width: 'auto',
-                      minWidth: 250,
-                    },
-                  },
-                }}
+                MenuProps={selectMenuProps}
+                sx={selectSx}
               >
+                {(categories || []).length === 0 && (
+                  <MenuItem disabled>No categories available</MenuItem>
+                )}
                 {(categories || []).map((category) => (
                   <MenuItem key={category.id} value={category.name}>
                     {category.name}
                   </MenuItem>
                 ))}
               </Select>
+              <FormHelperText>
+                {errors.category ||
+                  ((categories || []).length === 0
+                    ? "Create a category before adding a task."
+                    : "Choose how this task should be grouped.")}
+              </FormHelperText>
             </FormControl>
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={6}>
@@ -358,15 +402,8 @@ const CreateTask = ({
                     onChange={(e) =>
                       handleInputChange("priority", e.target.value)
                     }
-                    MenuProps={{
-                      PaperProps: {
-                        style: {
-                          maxHeight: 300,
-                          width: 'auto',
-                          minWidth: 200,
-                        },
-                      },
-                    }}
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
                   >
                     {priorityOptions.map((option) => (
                       <MenuItem key={option.value} value={option.value}>
@@ -385,15 +422,8 @@ const CreateTask = ({
                     onChange={(e) =>
                       handleInputChange("status", e.target.value)
                     }
-                    MenuProps={{
-                      PaperProps: {
-                        style: {
-                          maxHeight: 300,
-                          width: 'auto',
-                          minWidth: 200,
-                        },
-                      },
-                    }}
+                    MenuProps={selectMenuProps}
+                    sx={selectSx}
                   >
                     {statusOptions.map((option) => (
                       <MenuItem key={option.value} value={option.value}>

@@ -91,7 +91,12 @@ const ClientManager = ({ clients = [], onAddClient, onRemoveClient, onResetClien
   return (
     <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
-        <Typography variant="h6">Clients</Typography>
+        <Box>
+          <Typography variant="h6">Client access</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Create a private Client ID and temporary password for this project.
+          </Typography>
+        </Box>
         <Button
           startIcon={<Add />}
           variant="outlined"
@@ -99,13 +104,13 @@ const ClientManager = ({ clients = [], onAddClient, onRemoveClient, onResetClien
           onClick={handleOpenDialog}
           sx={{ textTransform: "none" }}
         >
-          Add Client
+          Create client login
         </Button>
       </Box>
 
       {clients.length === 0 ? (
         <Alert severity="info" sx={{ mb: 2 }}>
-          No clients assigned yet. Add clients to give them access to view project progress.
+          No client logins yet. Create one to give a client private access to this project's progress.
         </Alert>
       ) : (
         <List>
@@ -186,7 +191,7 @@ const ClientManager = ({ clients = [], onAddClient, onRemoveClient, onResetClien
 
       {/* Add Client Dialog */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Client to Project</DialogTitle>
+        <DialogTitle>Create client login</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
             {error && (
@@ -210,7 +215,7 @@ const ClientManager = ({ clients = [], onAddClient, onRemoveClient, onResetClien
               onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
               margin="normal"
               required
-              helperText="Client will receive an email notification and can log in to view progress"
+              helperText="Used for access notifications. The generated Client ID is used to sign in."
             />
             <TextField
               fullWidth
@@ -224,7 +229,7 @@ const ClientManager = ({ clients = [], onAddClient, onRemoveClient, onResetClien
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button onClick={handleAddClient} variant="contained" disabled={saving}>
-            {saving ? <CircularProgress size={20} color="inherit" /> : "Create client access"}
+            {saving ? <CircularProgress size={20} color="inherit" /> : "Generate credentials"}
           </Button>
         </DialogActions>
       </Dialog>
