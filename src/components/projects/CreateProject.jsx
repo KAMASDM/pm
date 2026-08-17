@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -25,6 +25,15 @@ import {
   Collapse,
   useTheme,
   useMediaQuery,
+  List,
+  ListItem,
+  ListItemText,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import {
@@ -37,6 +46,9 @@ import {
   AccessTime,
   NavigateNext,
   Add,
+  PersonAdd,
+  Delete,
+  ContentCopy,
 } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
 
@@ -55,6 +67,11 @@ const steps = [
     label: "Team Assignment",
     description: "Assign team members to the project",
     icon: <Group />,
+  },
+  {
+    label: "Clients",
+    description: "Add clients who can view project progress",
+    icon: <PersonAdd />,
   },
   {
     label: "Timeline & Review",
@@ -78,17 +95,31 @@ const priorityOptions = [
 
 const CreateProject = () => {
   const navigate = useNavigate();
+  const { id } = useParams();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [activeStep, setActiveStep] = useState(0);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openClientDialog, setOpenClientDialog] = useState(false);
+  const [newClient, setNewClient] = useState({
+    name: "",
+    email: "",
+    company: "",
+  });
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [loadingProject, setLoadingProject] = useState(false);
+  const [onboardingCredentials, setOnboardingCredentials] = useState([]);
 
   const {
     createProject,
+    updateProject,
     createTask,
+    provisionClient,
+    removeClientAccess,
     categories = [],
     employees = [],
+    projects = [],
   } = useProject();
 
   const [formData, setFormData] = useState({
@@ -98,6 +129,7 @@ const CreateProject = () => {
     priority: "medium",
     dueDate: null,
     assignedTo: [],
+    clients: [],
     selectedCategories: [],
     selectedTasks: {},
   });
@@ -137,6 +169,40 @@ const CreateProject = () => {
     );
     return tasks;
   }, [formData.selectedTasks, categories, theme.palette.grey]);
+
+  // Load existing project data in edit mode
+  useEffect(() => {
+    if (id && projects.length > 0) {
+      setLoadingProject(true);
+      const existingProject = projects.find((p) => p.id === id);
+
+      if (existingProject) {
+        setIsEditMode(true);
+        setFormData({
+          name: existingProject.name || "",
+          description: existingProject.description || "",
+          status: existingProject.status || "planning",
+          priority: existingProject.priority || "medium",
+          dueDate: existingProject.dueDate?.toDate
+            ? existingProject.dueDate.toDate()
+            : existingProject.dueDate
+            ? new Date(existingProject.dueDate)
+            : null,
+          assignedTo: (existingProject.assignedTo || [])
+            .map((member) =>
+              typeof member === "string"
+                ? employees.find((employee) => employee.id === member)
+                : member
+            )
+            .filter(Boolean),
+          clients: existingProject.clients || [],
+          selectedCategories: existingProject.selectedCategories || [],
+          selectedTasks: existingProject.selectedTasks || {},
+        });
+      }
+      setLoadingProject(false);
+    }
+  }, [id, projects, employees]);
 
   useEffect(() => {
     if (formData.selectedCategories.length > 0 && errors.categories) {
@@ -230,6 +296,10 @@ const CreateProject = () => {
         }
         break;
       case 3:
+        // Clients are optional - no validation needed
+        break;
+      case 4:
+        // Final review step - check submission errors if any
         if (errors.submission) newErrors.submission = errors.submission;
         break;
       default:
@@ -275,30 +345,90 @@ const CreateProject = () => {
       description: formData.description,
       status: formData.status,
       priority: formData.priority,
-      dueDate: formData.dueDate ? formData.dueDate.toISOString() : null,
-      assignedTo: formData.assignedTo.map((emp) => emp.id),
-      selectedCategories: formData.selectedCategories,
+      dueDate: formData.dueDate || null,
+      assignedTo: formData.assignedTo?.map((emp) => emp.id) || [],
+      teamMembers: formData.assignedTo?.map((employee) => ({
+        id: employee.id,
+        name: employee.name || "",
+        email: employee.email || "",
+        role: employee.role || "",
+        photoURL: employee.photoURL || "",
+      })) || [],
+      clients: (formData.clients || [])
+        .filter((client) => client.uid)
+        .map(({ uid, clientId, id: clientRecordId, name, company, role }) => ({
+          uid,
+          clientId,
+          id: clientRecordId || clientId,
+          name,
+          company: company || "",
+          role: role || "client",
+        })),
+      clientUserIds: (formData.clients || []).map((client) => client.uid).filter(Boolean),
+      selectedCategories: formData.selectedCategories || [],
+      selectedTasks: formData.selectedTasks || {},
     };
 
-    try {
-      const newProjectId = await createProject(projectPayload);
+    // Deep clean to remove undefined values (Firestore doesn't allow undefined)
+    const cleanPayload = JSON.parse(
+      JSON.stringify(projectPayload, (key, value) =>
+        value === undefined ? null : value
+      )
+    );
 
-      if (newProjectId) {
-        for (const taskData of tasksToCreatePayload) {
-          const taskPayload = {
-            ...taskData,
-            projectId: newProjectId,
-          };
-          await createTask(taskPayload);
+    try {
+      const provisionClients = async (projectId) => {
+        const results = [];
+        for (const client of formData.clients.filter((item) => !item.uid)) {
+          const access = await provisionClient({
+            projectId,
+            name: client.name,
+            email: client.email,
+            company: client.company || "",
+          });
+          results.push({ ...client, ...access });
         }
-        navigate("/projects");
+        return results;
+      };
+
+      if (isEditMode && id) {
+        // Update existing project
+        await updateProject(id, cleanPayload);
+        const previousClients = projects.find((project) => project.id === id)?.clients || [];
+        const retainedUids = new Set(
+          formData.clients.map((client) => client.uid).filter(Boolean)
+        );
+        for (const removedClient of previousClients.filter(
+          (client) => client.uid && !retainedUids.has(client.uid)
+        )) {
+          await removeClientAccess({ projectId: id, clientUid: removedClient.uid });
+        }
+        const credentials = await provisionClients(id);
+        if (credentials.length > 0) setOnboardingCredentials(credentials);
+        else navigate(`/projects/${id}`);
       } else {
-        console.error(
-          "Project creation succeeded but no ID was returned by createProject."
-        );
-        throw new Error(
-          "Project ID was not available after creation. Associated tasks could not be created."
-        );
+        // Create new project
+        const newProjectId = await createProject(cleanPayload);
+
+        if (newProjectId) {
+          for (const taskData of tasksToCreatePayload) {
+            const taskPayload = {
+              ...taskData,
+              projectId: newProjectId,
+            };
+            await createTask(taskPayload);
+          }
+          const credentials = await provisionClients(newProjectId);
+          if (credentials.length > 0) setOnboardingCredentials(credentials);
+          else navigate("/projects");
+        } else {
+          console.error(
+            "Project creation succeeded but no ID was returned by createProject."
+          );
+          throw new Error(
+            "Project ID was not available after creation. Associated tasks could not be created."
+          );
+        }
       }
     } catch (error) {
       console.error("Error during project or task creation:", error);
@@ -759,7 +889,85 @@ const CreateProject = () => {
           </Box>
         );
 
-      case 3: {
+      case 3:
+        return (
+          <Box>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+              Add clients who will have read-only access to view project progress. They will receive email notifications and can track project status.
+            </Typography>
+
+            <Paper
+              elevation={0}
+              sx={{
+                p: 3,
+                backgroundColor: "rgba(139, 126, 200, 0.05)",
+                border: "1px solid rgba(139, 126, 200, 0.2)",
+                borderRadius: 2,
+                mb: 3,
+              }}
+            >
+              <Typography variant="h6" gutterBottom>
+                Manage Clients
+              </Typography>
+
+              {formData.clients && formData.clients.length > 0 ? (
+                <Box>
+                  <List>
+                    {formData.clients.map((client, index) => (
+                      <ListItem
+                        key={client.id || index}
+                        sx={{
+                          border: "1px solid",
+                          borderColor: "divider",
+                          borderRadius: 2,
+                          mb: 1,
+                        }}
+                      >
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                              <Typography variant="body1" fontWeight={500}>
+                                {client.name}
+                              </Typography>
+                              <Chip label="Client" size="small" color="primary" />
+                            </Box>
+                          }
+                          secondary={client.email}
+                        />
+                        <IconButton
+                          edge="end"
+                          aria-label="delete"
+                          onClick={() => {
+                            const updatedClients = formData.clients.filter((_, i) => i !== index);
+                            handleInputChange("clients", updatedClients);
+                          }}
+                          color="error"
+                        >
+                          <Delete />
+                        </IconButton>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              ) : (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  No clients added yet. Clients can view project progress in their own dashboard.
+                </Alert>
+              )}
+
+              <Button
+                startIcon={<Add />}
+                variant="outlined"
+                onClick={() => setOpenClientDialog(true)}
+                sx={{ mt: 2 }}
+              >
+                Add Client
+              </Button>
+            </Paper>
+          </Box>
+        );
+
+      case 4: {
         const selectedStatus = statusOptions.find(
           (s) => s.value === formData.status
         );
@@ -973,18 +1181,32 @@ const CreateProject = () => {
   };
 
   return (
-    <Fade in={true} timeout={600}>
-      <Box sx={{ p: isMobile ? 1 : 2 }}>
+    <>
+      {loadingProject ? (
         <Box
           sx={{
             display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            justifyContent: "space-between",
-            alignItems: isMobile ? "flex-start" : "center",
-            mb: 4,
-            gap: 2,
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: "60vh",
           }}
         >
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <Fade in={true} timeout={600}>
+            <Box sx={{ p: isMobile ? 1 : 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              justifyContent: "space-between",
+              alignItems: isMobile ? "flex-start" : "center",
+              mb: 4,
+              gap: 2,
+            }}
+          >
           <Box>
             <Typography
               variant={isMobile ? "h5" : "h4"}
@@ -1139,7 +1361,7 @@ const CreateProject = () => {
                   variant="contained"
                   color="primary"
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || loadingProject}
                   startIcon={<Save />}
                   sx={{
                     px: 3,
@@ -1149,7 +1371,13 @@ const CreateProject = () => {
                     fontWeight: 600,
                   }}
                 >
-                  {isSubmitting ? "Creating Project..." : "Create Project"}
+                  {isSubmitting
+                    ? isEditMode
+                      ? "Updating..."
+                      : "Creating..."
+                    : isEditMode
+                    ? "Update Project"
+                    : "Create Project"}
                 </Button>
               ) : (
                 <Button
@@ -1173,7 +1401,145 @@ const CreateProject = () => {
           </Box>
         </Paper>
       </Box>
-    </Fade>
+      </Fade>
+
+      {/* Add Client Dialog */}
+      <Dialog
+        open={openClientDialog}
+        onClose={() => {
+          setOpenClientDialog(false);
+          setNewClient({ name: "", email: "", company: "" });
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add Client to Project</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Client Name"
+              value={newClient.name}
+              onChange={(e) => setNewClient({ ...newClient, name: e.target.value })}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Email Address"
+              type="email"
+              value={newClient.email}
+              onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+              margin="normal"
+              required
+              helperText="Client will receive a portal ID and temporary password at this email"
+            />
+            <TextField
+              fullWidth
+              label="Company (Optional)"
+              value={newClient.company}
+              onChange={(e) => setNewClient({ ...newClient, company: e.target.value })}
+              margin="normal"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setOpenClientDialog(false);
+              setNewClient({ name: "", email: "", company: "" });
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (!newClient.name || !newClient.email || !newClient.email.includes("@")) {
+                alert("Please fill in all required fields with valid data");
+                return;
+              }
+
+              const clientToAdd = {
+                id: `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                name: newClient.name,
+                email: newClient.email.toLowerCase(),
+                company: newClient.company || "",
+                role: "client",
+                addedAt: new Date().toISOString(),
+              };
+
+              handleInputChange("clients", [...(formData.clients || []), clientToAdd]);
+              setOpenClientDialog(false);
+              setNewClient({ name: "", email: "", company: "" });
+            }}
+            variant="contained"
+          >
+            Add Client
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={onboardingCredentials.length > 0}
+        maxWidth="sm"
+        fullWidth
+        disableEscapeKeyDown
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <CheckCircle color="success" /> Client access is ready
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Temporary passwords are shown only once. Copy them now and share them
+            through a secure channel.
+          </Alert>
+          {onboardingCredentials.map((credential) => (
+            <Paper key={credential.uid} variant="outlined" sx={{ p: 2, mb: 2 }}>
+              <Typography fontWeight={700}>{credential.name}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                {credential.email}
+              </Typography>
+              <TextField
+                fullWidth
+                label="Client ID"
+                value={credential.clientId}
+                InputProps={{ readOnly: true }}
+                sx={{ mb: 1.5 }}
+              />
+              <TextField
+                fullWidth
+                label={credential.temporaryPassword ? "Temporary password" : "Password"}
+                value={credential.temporaryPassword || "Existing client password unchanged"}
+                InputProps={{
+                  readOnly: true,
+                  endAdornment: credential.temporaryPassword ? (
+                    <IconButton
+                      aria-label="Copy client credentials"
+                      onClick={() =>
+                        navigator.clipboard.writeText(
+                          `Client ID: ${credential.clientId}\nTemporary password: ${credential.temporaryPassword}`
+                        )
+                      }
+                    >
+                      <ContentCopy />
+                    </IconButton>
+                  ) : null,
+                }}
+              />
+            </Paper>
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="contained"
+            onClick={() => navigate(isEditMode && id ? `/projects/${id}` : "/projects")}
+          >
+            Continue to workspace
+          </Button>
+        </DialogActions>
+      </Dialog>
+        </>
+      )}
+    </>
   );
 };
 

@@ -11,21 +11,20 @@ import {
   Divider,
   ListItemIcon,
   ListItemText,
-  Badge,
   Tooltip,
 } from "@mui/material";
 import {
   Menu as MenuIcon,
-  AccountCircle,
   Logout,
-  Settings,
-  Notifications,
   BusinessCenter,
 } from "@mui/icons-material";
 import useAuth from "../../hooks/useAuth";
+import NotificationBell from "../notifications/NotificationBell";
 
 const Navbar = ({ drawerWidth, onDrawerToggle, isMobile }) => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, userProfile, logout } = useAuth();
+  const displayName = userProfile?.displayName || currentUser?.displayName;
+  const displayEmail = userProfile?.contactEmail || currentUser?.email;
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
 
@@ -102,18 +101,12 @@ const Navbar = ({ drawerWidth, onDrawerToggle, isMobile }) => {
                 WebkitTextFillColor: "transparent",
               }}
             >
-              Project Manager
+              Orbit Projects
             </Typography>
           </Box>
         </Box>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Tooltip title="Notifications">
-            <IconButton size="large" sx={{ color: "text.primary" }}>
-              <Badge badgeContent={3} color="error">
-                <Notifications />
-              </Badge>
-            </IconButton>
-          </Tooltip>
+          <NotificationBell />
           <Tooltip title="Account settings">
             <IconButton
               onClick={handleMenuOpen}
@@ -131,9 +124,9 @@ const Navbar = ({ drawerWidth, onDrawerToggle, isMobile }) => {
                   border: "2px solid rgba(139, 126, 200, 0.2)",
                 }}
                 src={currentUser?.photoURL}
-                alt={currentUser?.displayName}
+                alt={displayName}
               >
-                {currentUser?.displayName?.charAt(0)}
+                {displayName?.charAt(0)}
               </Avatar>
             </IconButton>
           </Tooltip>
@@ -174,33 +167,20 @@ const Navbar = ({ drawerWidth, onDrawerToggle, isMobile }) => {
               <Avatar
                 sx={{ width: 48, height: 48, bgcolor: "primary.main" }}
                 src={currentUser?.photoURL}
-                alt={currentUser?.displayName}
+                alt={displayName}
               >
-                {currentUser?.displayName?.charAt(0)}
+                {displayName?.charAt(0)}
               </Avatar>
               <Box>
                 <Typography variant="subtitle1" fontWeight={600}>
-                  {currentUser?.displayName}
+                  {displayName}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {currentUser?.email}
+                  {displayEmail}
                 </Typography>
               </Box>
             </Box>
           </Box>
-          <Divider />
-          <MenuItem onClick={handleMenuClose} sx={{ py: 1.5 }}>
-            <ListItemIcon>
-              <AccountCircle fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Profile</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={handleMenuClose} sx={{ py: 1.5 }}>
-            <ListItemIcon>
-              <Settings fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Settings</ListItemText>
-          </MenuItem>
           <Divider />
           <MenuItem
             onClick={handleLogout}

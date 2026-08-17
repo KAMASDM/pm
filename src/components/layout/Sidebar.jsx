@@ -24,7 +24,9 @@ import {
   Analytics,
   ExpandLess,
   ExpandMore,
+  Visibility,
 } from "@mui/icons-material";
+import useAuth from "../../hooks/useAuth";
 
 const menuItems = [
   {
@@ -63,6 +65,15 @@ const menuItems = [
   },
 ];
 
+const clientMenuItems = [
+  {
+    text: "Dashboard",
+    icon: <Dashboard />,
+    path: "/client/dashboard",
+    color: "#8B7EC8",
+  },
+];
+
 const quickActions = [
   {
     text: "New Project",
@@ -75,9 +86,12 @@ const quickActions = [
 const Sidebar = ({ onItemClick }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isClient } = useAuth();
   const [openSubMenu, setOpenSubMenu] = useState({
     Projects: location.pathname.startsWith("/projects"),
   });
+
+  const currentMenuItems = isClient ? clientMenuItems : menuItems;
 
   const handleItemClick = (path) => {
     navigate(path);
@@ -109,11 +123,11 @@ const Sidebar = ({ onItemClick }) => {
             fontSize: "0.75rem",
           }}
         >
-          Main Menu
+          {isClient ? "Client Portal" : "Main Menu"}
         </Typography>
       </Box>
       <List sx={{ px: 2 }}>
-        {menuItems.map((item) => (
+        {currentMenuItems.map((item) => (
           <React.Fragment key={item.text}>
             <ListItem disablePadding sx={{ mb: 0.5 }}>
               <ListItemButton
@@ -250,22 +264,24 @@ const Sidebar = ({ onItemClick }) => {
           </React.Fragment>
         ))}
       </List>
-      <Divider sx={{ mx: 2, my: 2 }} />
-      <Box sx={{ p: 2, pb: 1 }}>
-        <Typography
-          variant="overline"
-          sx={{
-            color: "text.secondary",
-            fontWeight: 600,
-            letterSpacing: 1,
-            fontSize: "0.75rem",
-          }}
-        >
-          Quick Actions
-        </Typography>
-      </Box>
-      <List sx={{ px: 2 }}>
-        {quickActions.map((item) => (
+      {!isClient && (
+        <>
+          <Divider sx={{ mx: 2, my: 2 }} />
+          <Box sx={{ p: 2, pb: 1 }}>
+            <Typography
+              variant="overline"
+              sx={{
+                color: "text.secondary",
+                fontWeight: 600,
+                letterSpacing: 1,
+                fontSize: "0.75rem",
+              }}
+            >
+              Quick Actions
+            </Typography>
+          </Box>
+          <List sx={{ px: 2 }}>
+            {quickActions.map((item) => (
           <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
             <ListItemButton
               onClick={() => handleItemClick(item.path)}
@@ -304,6 +320,8 @@ const Sidebar = ({ onItemClick }) => {
           </ListItem>
         ))}
       </List>
+        </>
+      )}
       <Box sx={{ flexGrow: 1 }} />
       <Box sx={{ p: 2 }}>
         <Box

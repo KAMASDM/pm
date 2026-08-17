@@ -1,15 +1,26 @@
-import React, { useState } from "react";
-import { Outlet } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { Box, Drawer, useMediaQuery, useTheme } from "@mui/material";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
+import useAuth from "../../hooks/useAuth";
 
 const drawerWidth = 280;
 
 const Layout = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isClient } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+
+  // Redirect clients to their dashboard
+  useEffect(() => {
+    if (isClient && location.pathname === "/dashboard") {
+      navigate("/client/dashboard", { replace: true });
+    }
+  }, [isClient, location.pathname, navigate]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);

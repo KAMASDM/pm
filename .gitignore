@@ -2,3 +2,9 @@ node_modules
 .env
 .DS_Store
 dist
+.firebase
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+functions/.env.*
+!functions/.env.example

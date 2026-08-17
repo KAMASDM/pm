@@ -30,16 +30,21 @@ const Dashboard = () => {
   const { currentUser } = useAuth();
   const { projects, tasks, employees } = useProject();
   const navigate = useNavigate();
+  const currentEmployee = employees.find(
+    (employee) => employee.email?.toLowerCase() === currentUser.email?.toLowerCase()
+  );
 
   const myTasks = tasks.filter(
     (task) =>
-      task.assignedTo === currentUser.uid && task.status !== "completed"
+      [currentUser.uid, currentEmployee?.id].includes(task.assignedTo) &&
+      task.status !== "completed"
   );
 
   const overdueTasks = tasks.filter(
     (task) =>
       task.dueDate &&
-      new Date(task.dueDate) < new Date() &&
+      (task.dueDate.toDate ? task.dueDate.toDate() : new Date(task.dueDate)) <
+        new Date() &&
       task.status !== "completed"
   );
 
@@ -153,7 +158,10 @@ const Dashboard = () => {
                     primary={task.name}
                     secondary={`Due: ${
                       task.dueDate
-                        ? new Date(task.dueDate).toLocaleDateString()
+                        ? (task.dueDate.toDate
+                            ? task.dueDate.toDate()
+                            : new Date(task.dueDate)
+                          ).toLocaleDateString()
                         : "N/A"
                     }`}
                   />
@@ -175,7 +183,11 @@ const Dashboard = () => {
             <List>
               {tasks
                 .slice()
-                .sort((a, b) => b.createdAt.seconds - a.createdAt.seconds)
+                .sort((a, b) => {
+                  const aTime = a.createdAt?.toMillis?.() || 0;
+                  const bTime = b.createdAt?.toMillis?.() || 0;
+                  return bTime - aTime;
+                })
                 .slice(0, 5)
                 .map((task) => (
                   <ListItem key={task.id}>
@@ -213,19 +225,18 @@ const Dashboard = () => {
                 <ListItem key={project.id}>
                   <ListItemText
                     primary={project.name}
-                    secondary={
-                      <Box sx={{ display: "flex", alignItems: "center" }}>
-                        <LinearProgress
-                          variant="determinate"
-                          value={getProjectProgress(project.id)}
-                          sx={{ width: "100px", mr: 1 }}
-                        />
-                        <Typography variant="caption" color="text.secondary">
-                          {Math.round(getProjectProgress(project.id))}%
-                        </Typography>
-                      </Box>
-                    }
+                    secondary={`Progress: ${Math.round(getProjectProgress(project.id))}%`}
                   />
+                  <Box sx={{ display: "flex", alignItems: "center", ml: 2 }}>
+                    <LinearProgress
+                      variant="determinate"
+                      value={getProjectProgress(project.id)}
+                      sx={{ width: "100px", mr: 1 }}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {Math.round(getProjectProgress(project.id))}%
+                    </Typography>
+                  </Box>
                 </ListItem>
               ))}
             </List>

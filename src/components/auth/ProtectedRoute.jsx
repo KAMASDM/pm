@@ -2,9 +2,10 @@ import React from "react";
 import { Navigate } from "react-router-dom";
 import { Box, CircularProgress, Typography } from "@mui/material";
 import useAuth from "../../hooks/useAuth";
+import AccessDenied from "./AccessDenied";
 
 const ProtectedRoute = ({ children }) => {
-  const { currentUser, loading } = useAuth();
+  const { currentUser, loading, userRole } = useAuth();
 
   if (loading) {
     return (
@@ -42,6 +43,10 @@ const ProtectedRoute = ({ children }) => {
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!userRole || userRole === "unauthorized") {
+    return <AccessDenied />;
   }
 
   return children;

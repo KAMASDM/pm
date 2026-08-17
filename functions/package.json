@@ -1,0 +1,20 @@
+{
+  "name": "orbit-projects-functions",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "lint": "eslint src",
+    "serve": "firebase emulators:start --only functions,firestore,auth",
+    "deploy": "firebase deploy --only functions",
+    "set-admin": "node scripts/set-admin.mjs",
+    "migrate": "node scripts/migrate-data.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2"
+  }
+}

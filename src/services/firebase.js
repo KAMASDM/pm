@@ -5,7 +5,9 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithEmailAndPassword,
   signOut,
+  updatePassword,
 } from "firebase/auth";
 import {
   getFirestore,
@@ -22,7 +24,9 @@ import {
   serverTimestamp,
   getDoc,
   writeBatch,
+  Timestamp,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -44,6 +48,21 @@ googleProvider.setCustomParameters({
 });
 
 export const db = getFirestore(app);
+export const functions = getFunctions(app, "asia-south1");
+
+const clientAuthDomain =
+  import.meta.env.VITE_CLIENT_AUTH_DOMAIN || "clients.pm.local";
+
+const normalizeClientId = (clientId) =>
+  clientId.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
+
+const normalizeDateFields = (data) => {
+  if (!("dueDate" in data) || !data.dueDate || data.dueDate?.toDate) return data;
+  const value = data.dueDate instanceof Date ? data.dueDate : new Date(data.dueDate);
+  return Number.isNaN(value.getTime())
+    ? { ...data, dueDate: null }
+    : { ...data, dueDate: Timestamp.fromDate(value) };
+};
 
 export const signInWithGoogle = async () => {
   try {
@@ -64,12 +83,48 @@ export const logOut = async () => {
   }
 };
 
+export const signInWithClientId = async (clientId, password) => {
+  const normalizedId = normalizeClientId(clientId);
+  if (!normalizedId) throw new Error("Enter a valid client ID");
+  const result = await signInWithEmailAndPassword(
+    auth,
+    `${normalizedId}@${clientAuthDomain}`,
+    password
+  );
+  return result.user;
+};
+
+export const changeCurrentUserPassword = async (password) => {
+  if (!auth.currentUser) throw new Error("No authenticated user");
+  await updatePassword(auth.currentUser, password);
+  const completeChange = httpsCallable(functions, "completePasswordChange");
+  await completeChange();
+};
+
+export const provisionClientAccount = async (clientData) => {
+  const provisionClient = httpsCallable(functions, "provisionClientAccount");
+  const result = await provisionClient(clientData);
+  return result.data;
+};
+
+export const resetClientAccess = async (clientData) => {
+  const resetAccess = httpsCallable(functions, "resetClientAccess");
+  const result = await resetAccess(clientData);
+  return result.data;
+};
+
+export const removeClientProjectAccess = async (clientData) => {
+  const removeAccess = httpsCallable(functions, "removeClientFromProject");
+  const result = await removeAccess(clientData);
+  return result.data;
+};
+
 export const firebaseService = {
   // Projects
   async createProject(projectData) {
     try {
       const docRef = await addDoc(collection(db, "projects"), {
-        ...projectData,
+        ...normalizeDateFields(projectData),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -106,6 +161,24 @@ export const firebaseService = {
     }
   },
 
+  async getClientProjects(userId) {
+    try {
+      const q = query(
+        collection(db, "projects"),
+        where("clientUserIds", "array-contains", userId),
+        orderBy("updatedAt", "desc")
+      );
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map((projectDoc) => ({
+        id: projectDoc.id,
+        ...projectDoc.data(),
+      }));
+    } catch (error) {
+      console.error("Error getting client projects:", error);
+      throw error;
+    }
+  },
+
   async getProject(projectId) {
     try {
       const docRef = doc(db, "projects", projectId);
@@ -129,7 +202,7 @@ export const firebaseService = {
     try {
       const projectRef = doc(db, "projects", projectId);
       await updateDoc(projectRef, {
-        ...updateData,
+        ...normalizeDateFields(updateData),
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
@@ -140,7 +213,8 @@ export const firebaseService = {
 
   async deleteProject(projectId) {
     try {
-      await deleteDoc(doc(db, "projects", projectId));
+      const deleteProjectCascade = httpsCallable(functions, "deleteProjectCascade");
+      await deleteProjectCascade({ projectId });
     } catch (error) {
       console.error("Error deleting project:", error);
       throw error;
@@ -151,7 +225,7 @@ export const firebaseService = {
   async createMilestone(milestoneData) {
     try {
       const docRef = await addDoc(collection(db, "milestones"), {
-        ...milestoneData,
+        ...normalizeDateFields(milestoneData),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -180,11 +254,19 @@ export const firebaseService = {
     }
   },
 
+  async getMilestonesForProjects(projectIds) {
+    if (!projectIds.length) return [];
+    const results = await Promise.all(
+      projectIds.map((projectId) => this.getMilestonesByProject(projectId))
+    );
+    return results.flat();
+  },
+
   async updateMilestone(milestoneId, updateData) {
     try {
       const milestoneRef = doc(db, "milestones", milestoneId);
       await updateDoc(milestoneRef, {
-        ...updateData,
+        ...normalizeDateFields(updateData),
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
@@ -216,8 +298,12 @@ export const firebaseService = {
   // Tasks
   async createTask(taskData) {
     try {
+      // Remove temporary id if it exists (from category templates)
+      const cleanTaskData = { ...taskData };
+      delete cleanTaskData.id;
+
       const docRef = await addDoc(collection(db, "tasks"), {
-        ...taskData,
+        ...normalizeDateFields(cleanTaskData),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -242,14 +328,32 @@ export const firebaseService = {
       }
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      return querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        // Remove any temporary id from data to avoid conflicts
+        const restData = { ...data };
+        delete restData.id;
+        return {
+          id: doc.id, // Use Firestore document ID
+          ...restData,
+        };
+      });
     } catch (error) {
       console.error("Error getting tasks:", error);
       throw error;
     }
+  },
+
+  async getTasksForProjects(projectIds) {
+    if (!projectIds.length) return [];
+    const results = await Promise.all(
+      projectIds.map((projectId) => this.getTasks(projectId))
+    );
+    return results.flat().sort((a, b) => {
+      const aTime = a.createdAt?.toMillis?.() || 0;
+      const bTime = b.createdAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
   },
 
   async getTask(taskId) {
@@ -275,7 +379,7 @@ export const firebaseService = {
     try {
       const taskRef = doc(db, "tasks", taskId);
       await updateDoc(taskRef, {
-        ...updateData,
+        ...normalizeDateFields(updateData),
         updatedAt: serverTimestamp(),
       });
     } catch (error) {
@@ -289,6 +393,21 @@ export const firebaseService = {
       await deleteDoc(doc(db, "tasks", taskId));
     } catch (error) {
       console.error("Error deleting task:", error);
+      throw error;
+    }
+  },
+
+  // Task Comments
+  async addTaskComment(taskId, commentData) {
+    try {
+      const addComment = httpsCallable(functions, "addTaskComment");
+      await addComment({
+        taskId,
+        text: commentData.text,
+        parentId: commentData.parentId || null,
+      });
+    } catch (error) {
+      console.error("Error adding comment:", error);
       throw error;
     }
   },

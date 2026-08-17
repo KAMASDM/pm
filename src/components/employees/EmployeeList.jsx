@@ -34,13 +34,29 @@ import ConfirmationDialog from "../common/ConfirmationDialog";
 
 const roleOptions = [
   { value: "all", label: "All Roles", color: "#607D8B" },
+  // Development Roles
   { value: "developer", label: "Developer", color: "#4CAF50" },
-  { value: "designer", label: "Designer", color: "#FF9800" },
+  { value: "designer", label: "UI/UX Designer", color: "#FF9800" },
   { value: "manager", label: "Project Manager", color: "#2196F3" },
   { value: "analyst", label: "Business Analyst", color: "#E91E63" },
   { value: "tester", label: "QA Tester", color: "#00BCD4" },
   { value: "devops", label: "DevOps Engineer", color: "#9C27B0" },
   { value: "data_scientist", label: "Data Scientist", color: "#795548" },
+  // Marketing & SEO Roles
+  { value: "seo_specialist", label: "SEO Specialist", color: "#4CAF50" },
+  { value: "content_writer", label: "Content Writer", color: "#FF9800" },
+  { value: "social_media_manager", label: "Social Media Manager", color: "#E91E63" },
+  { value: "digital_marketing_manager", label: "Digital Marketing Manager", color: "#2196F3" },
+  { value: "ppc_specialist", label: "PPC Specialist", color: "#9C27B0" },
+  { value: "email_marketing_specialist", label: "Email Marketing Specialist", color: "#00BCD4" },
+  { value: "content_strategist", label: "Content Strategist", color: "#FF5722" },
+  { value: "marketing_analyst", label: "Marketing Analyst", color: "#795548" },
+  { value: "community_manager", label: "Community Manager", color: "#FFC107" },
+  { value: "brand_manager", label: "Brand Manager", color: "#673AB7" },
+  { value: "influencer_manager", label: "Influencer Marketing Manager", color: "#E91E63" },
+  { value: "copywriter", label: "Copywriter", color: "#FF9800" },
+  { value: "video_producer", label: "Video Producer/Editor", color: "#F44336" },
+  { value: "graphic_designer", label: "Graphic Designer", color: "#9C27B0" },
 ];
 
 const departmentOptions = [
@@ -48,13 +64,21 @@ const departmentOptions = [
   "Design",
   "Product",
   "Marketing",
+  "Digital Marketing",
+  "SEO",
+  "Content",
+  "Social Media",
+  "Paid Advertising",
   "Sales",
   "Operations",
   "Human Resources",
   "Finance",
+  "Brand & Communications",
+  "Analytics",
 ];
 
 const skillOptions = [
+  // Development Skills
   "React",
   "Node.js",
   "Python",
@@ -77,6 +101,56 @@ const skillOptions = [
   "SQL",
   "Machine Learning",
   "Data Analysis",
+  // SEO & Marketing Skills
+  "SEO Optimization",
+  "Google Analytics",
+  "Google Search Console",
+  "SEMrush",
+  "Ahrefs",
+  "Keyword Research",
+  "Link Building",
+  "Technical SEO",
+  "Local SEO",
+  "Content Marketing",
+  "Copywriting",
+  "Blog Writing",
+  "Social Media Marketing",
+  "Facebook Ads",
+  "Instagram Marketing",
+  "LinkedIn Marketing",
+  "Twitter/X Marketing",
+  "TikTok Marketing",
+  "Pinterest Marketing",
+  "YouTube Marketing",
+  "Google Ads",
+  "PPC Campaigns",
+  "Display Advertising",
+  "Retargeting",
+  "Email Marketing",
+  "Mailchimp",
+  "HubSpot",
+  "Marketing Automation",
+  "Canva",
+  "Adobe Photoshop",
+  "Adobe Illustrator",
+  "Video Editing",
+  "Adobe Premiere Pro",
+  "Final Cut Pro",
+  "Influencer Marketing",
+  "Affiliate Marketing",
+  "Community Management",
+  "Brand Strategy",
+  "Content Strategy",
+  "Conversion Optimization",
+  "A/B Testing",
+  "Landing Page Design",
+  "WordPress",
+  "Shopify",
+  "E-commerce Marketing",
+  "Social Media Analytics",
+  "Hootsuite",
+  "Buffer",
+  "Sprout Social",
 ];
 
 const EmployeeList = () => {
@@ -227,7 +301,9 @@ const EmployeeList = () => {
 
   const getEmployeeProjects = (employeeId) => {
     return projects.filter((project) =>
-      project.assignedTo?.some((member) => member.id === employeeId)
+      project.assignedTo?.some((member) =>
+        typeof member === "string" ? member === employeeId : member.id === employeeId
+      )
     );
   };
 
@@ -236,6 +312,11 @@ const EmployeeList = () => {
   };
 
   const getRoleColor = (role) => {
+    const roleOption = roleOptions.find(r => r.value === role);
+    if (roleOption && roleOption.color) {
+      return roleOption.color;
+    }
+    // Fallback colors
     switch (role) {
       case "developer":
         return theme.palette.primary.main;

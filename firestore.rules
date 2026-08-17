@@ -1,0 +1,97 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isTeam() {
+      return signedIn() && currentProfile().role in ['admin', 'team'];
+    }
+
+    function isAdmin() {
+      return signedIn() && currentProfile().role == 'admin';
+    }
+
+    function canReadProject(projectId) {
+      let project = get(/databases/$(database)/documents/projects/$(projectId)).data;
+      return isTeam() || (
+        project.clientUserIds is list && request.auth.uid in project.clientUserIds
+      );
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isTeam());
+      allow create: if false;
+      allow update: if signedIn() && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['updatedAt', 'notificationPreferences']);
+      allow delete: if isAdmin();
+
+      match /devices/{deviceId} {
+        allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /projects/{projectId} {
+      allow read: if isTeam();
+      allow read: if signedIn() && request.auth.uid in resource.data.clientUserIds;
+      allow create, update, delete: if isTeam();
+
+      match /clients/{clientId} {
+        allow read: if signedIn() && (isTeam() || request.auth.uid == clientId);
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /tasks/{taskId} {
+      allow read: if signedIn() && canReadProject(resource.data.projectId);
+      allow create, update, delete: if isTeam();
+    }
+
+    match /milestones/{milestoneId} {
+      allow read: if signedIn() && canReadProject(resource.data.projectId);
+      allow create, update, delete: if isTeam();
+    }
+
+    match /categories/{categoryId} {
+      allow read, create, update, delete: if isTeam();
+    }
+
+    match /employees/{employeeId} {
+      allow read, create, update, delete: if isTeam();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.recipientIds;
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.recipientIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+        && resource.data.readBy is list
+        && request.resource.data.readBy is list
+        && request.auth.uid in request.resource.data.readBy
+        && request.resource.data.readBy.toSet().hasAll(resource.data.readBy.toSet())
+        && request.resource.data.readBy.size()
+          == resource.data.readBy.size()
+            + (request.auth.uid in resource.data.readBy ? 0 : 1);
+      allow create, delete: if false;
+    }
+
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
+
+    match /emailNotifications/{notificationId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

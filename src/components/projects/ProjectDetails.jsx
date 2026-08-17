@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box,
@@ -43,15 +43,10 @@ import {
   PeopleOutline,
   BarChart,
   AccountCircle,
-  CheckCircleOutline,
-  DonutLarge,
-  Cached,
-  HourglassEmpty,
-  Block,
 } from "@mui/icons-material";
 import useProject from "../../hooks/useProject";
-import { stringToColor } from "../../helpers/stringToColor";
 import Milestone from "./Milestone";
+import ClientManager from "../clients/ClientManager";
 
 const statusOptions = [
   { value: "planning", label: "Planning", color: "#64B5F6" },
@@ -79,6 +74,9 @@ const ProjectDetails = () => {
     createMilestone,
     deleteMilestone,
     updateMilestone,
+    provisionClient,
+    removeClientAccess,
+    resetClientCredentials,
   } = useProject();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -220,57 +218,6 @@ const ProjectDetails = () => {
       return "Error in date";
     }
   };
-
-  const getTasksByStatus = useCallback(
-    (status) => {
-      return tasks.filter((task) => task.status === status);
-    },
-    [tasks]
-  );
-
-  const quickStats = useMemo(
-    () => [
-      {
-        label: "Total Tasks",
-        value: tasks.length,
-        icon: <DonutLarge />,
-        color: theme.palette.primary.main,
-      },
-      {
-        label: "Completed",
-        value: getTasksByStatus("completed").length,
-        icon: <CheckCircleOutline />,
-        color:
-          statusOptions.find((opt) => opt.value === "completed")?.color ||
-          "#81C784",
-      },
-      {
-        label: "In Progress",
-        value: getTasksByStatus("in-progress").length,
-        icon: <Cached />,
-        color:
-          statusOptions.find((opt) => opt.value === "in-progress")?.color ||
-          "#FFB74D",
-      },
-      {
-        label: "Pending",
-        value: getTasksByStatus("pending").length,
-        icon: <HourglassEmpty />,
-        color:
-          statusOptions.find((opt) => opt.value === "pending")?.color ||
-          "#64B5F6",
-      },
-      {
-        label: "Blocked",
-        value: getTasksByStatus("blocked").length,
-        icon: <Block />,
-        color:
-          statusOptions.find((opt) => opt.value === "blocked")?.color ||
-          "#F44336",
-      },
-    ],
-    [getTasksByStatus, tasks.length, theme.palette.primary.main]
-  );
 
   if (loading) {
     return (
@@ -554,9 +501,18 @@ const ProjectDetails = () => {
                     }}
                   />
                   <Tab
-                    label="Activity"
+                    label="Clients"
                     id="project-tab-1"
                     aria-controls="project-tabpanel-1"
+                    sx={{
+                      minWidth: isMobile ? "auto" : 120,
+                      textTransform: "none",
+                    }}
+                  />
+                  <Tab
+                    label="Activity"
+                    id="project-tab-2"
+                    aria-controls="project-tabpanel-2"
                     sx={{
                       minWidth: isMobile ? "auto" : 120,
                       textTransform: "none",
@@ -616,6 +572,34 @@ const ProjectDetails = () => {
                     role="tabpanel"
                     id="project-tabpanel-1"
                     aria-labelledby="project-tab-1"
+                  >
+                    <ClientManager
+                      clients={project.clients || []}
+                      onAddClient={async (newClient) => {
+                        return provisionClient({ projectId: project.id, ...newClient });
+                      }}
+                      onRemoveClient={async (clientId) => {
+                        const removedClient = (project.clients || []).find(
+                          (c) => (c.id || c.email) === clientId
+                        );
+                        if (removedClient?.uid) {
+                          await removeClientAccess({
+                            projectId: project.id,
+                            clientUid: removedClient.uid,
+                          });
+                        }
+                      }}
+                      onResetClient={(client) =>
+                        resetClientCredentials({ uid: client.uid })
+                      }
+                    />
+                  </Box>
+                )}
+                {tabValue === 2 && (
+                  <Box
+                    role="tabpanel"
+                    id="project-tabpanel-2"
+                    aria-labelledby="project-tab-2"
                   >
                     <Typography
                       variant="subtitle1"

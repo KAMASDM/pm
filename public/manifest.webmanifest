@@ -1,0 +1,12 @@
+{
+  "name": "Orbit Projects",
+  "short_name": "Orbit",
+  "description": "Private project delivery workspaces for teams and clients.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f6fb",
+  "theme_color": "#241b3d",
+  "icons": [
+    { "src": "/orbit-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

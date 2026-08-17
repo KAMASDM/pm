@@ -40,6 +40,9 @@ const ProjectCard = ({ project }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [openConfirmDialog, setOpenConfirmDialog] = useState(false);
+  const teamMembers =
+    project.teamMembers ||
+    (project.assignedTo || []).filter((member) => typeof member === "object");
 
   const tasks = getTasksByProject(project.id);
 
@@ -308,7 +311,7 @@ const ProjectCard = ({ project }) => {
             </Typography>
           </Box>
         )}
-        {project.assignedTo && project.assignedTo.length > 0 && (
+        {teamMembers.length > 0 && (
           <Box>
             <Typography
               variant="body2"
@@ -319,10 +322,10 @@ const ProjectCard = ({ project }) => {
               Team
             </Typography>
 
-            {project.assignedTo.length === 1 ? (
+            {teamMembers.length === 1 ? (
               <Tooltip
                 title={
-                  project.assignedTo[0].name || project.assignedTo[0].email
+                  teamMembers[0]?.name || teamMembers[0]?.email || "Unknown"
                 }
                 placement="top"
                 arrow
@@ -333,17 +336,17 @@ const ProjectCard = ({ project }) => {
                     width: 36,
                     height: 36,
                     bgcolor: stringToColor(
-                      project.assignedTo[0].name || project.assignedTo[0].email
+                      teamMembers[0]?.name || teamMembers[0]?.email || "U"
                     ),
                     fontSize: "1rem",
                     border: (theme) =>
                       `2px solid ${theme.palette.background.paper}`,
                   }}
-                  src={project.assignedTo[0].photoURL}
+                  src={teamMembers[0]?.photoURL}
                 >
-                  {(project.assignedTo[0].name || project.assignedTo[0].email)
-                    ?.charAt(0)
-                    ?.toUpperCase()}
+                  {((teamMembers[0]?.name || teamMembers[0]?.email || "U")
+                    .charAt(0)
+                    .toUpperCase())}
                 </Avatar>
               </Tooltip>
             ) : (
@@ -360,21 +363,21 @@ const ProjectCard = ({ project }) => {
                   },
                 }}
               >
-                {project.assignedTo.map((member) => (
+                {teamMembers.map((member, index) => (
                   <Tooltip
-                    key={member.id || member.email}
-                    title={member.name || member.email}
+                    key={member?.id || member?.email || index}
+                    title={member?.name || member?.email || "Unknown"}
                     placement="top"
                     arrow
                     TransitionComponent={Fade}
                   >
                     <Avatar
                       sx={{
-                        bgcolor: stringToColor(member.name || member.email),
+                        bgcolor: stringToColor(member?.name || member?.email || "U"),
                       }}
-                      src={member.photoURL}
+                      src={member?.photoURL}
                     >
-                      {(member.name || member.email).charAt(0).toUpperCase()}
+                      {((member?.name || member?.email || "U").charAt(0).toUpperCase())}
                     </Avatar>
                   </Tooltip>
                 ))}
@@ -453,11 +456,8 @@ const ProjectCard = ({ project }) => {
         </DialogTitle>
         <DialogContent>
           <DialogContentText id="alert-dialog-description">
-            Are you sure you want to delete the project "
-            <Typography component="span" fontWeight={600}>
-              {project.name}
-            </Typography>
-            "?
+            Are you sure you want to delete the project "{project.name}"?
+            <Box component="span" sx={{ fontWeight: 600, display: "none" }} />
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0 }}>

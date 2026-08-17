@@ -1,34 +1,84 @@
 // src/contexts/ProjectContext.jsx
 
 import React, { createContext, useState, useEffect, useCallback } from "react";
-import { firebaseService } from "../services/firebase";
+import {
+  firebaseService,
+  provisionClientAccount,
+  resetClientAccess,
+  removeClientProjectAccess,
+} from "../services/firebase";
 import useAuth from "../hooks/useAuth";
 
 const ProjectContext = createContext();
 
 export const ProjectProvider = ({ children }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, isClient, isTeamMember } = useAuth();
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [milestones, setMilestones] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (currentUser) {
-      loadProjects();
-      loadTasks();
-      loadEmployees();
-      loadCategories();
+    if (!currentUser) {
+      setProjects([]);
+      setTasks([]);
+      setMilestones([]);
+      setEmployees([]);
+      setCategories([]);
+      return;
     }
-  }, [currentUser]);
+
+    const loadWorkspace = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (isClient) {
+          const clientProjects = await firebaseService.getClientProjects(
+            currentUser.uid
+          );
+          const projectIds = clientProjects.map((project) => project.id);
+          const [clientTasks, clientMilestones] = await Promise.all([
+            firebaseService.getTasksForProjects(projectIds),
+            firebaseService.getMilestonesForProjects(projectIds),
+          ]);
+          setProjects(clientProjects);
+          setTasks(clientTasks);
+          setMilestones(clientMilestones);
+          setEmployees([]);
+          setCategories([]);
+        } else if (isTeamMember) {
+          const [projectsData, tasksData, employeesData, categoriesData] =
+            await Promise.all([
+              firebaseService.getProjects(),
+              firebaseService.getTasks(),
+              firebaseService.getEmployees(),
+              firebaseService.getCategories(),
+            ]);
+          setProjects(projectsData);
+          setTasks(tasksData);
+          setEmployees(employeesData);
+          setCategories(categoriesData);
+        }
+      } catch (workspaceError) {
+        console.error("Unable to load workspace:", workspaceError);
+        setError("We could not load your workspace. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadWorkspace();
+  }, [currentUser, isClient, isTeamMember]);
 
   const loadProjects = async () => {
     try {
       setLoading(true);
-      const projectsData = await firebaseService.getProjects();
+      const projectsData = isClient
+        ? await firebaseService.getClientProjects(currentUser.uid)
+        : await firebaseService.getProjects();
       setProjects(projectsData);
     } catch (error) {
       setError("Failed to load projects");
@@ -40,7 +90,11 @@ export const ProjectProvider = ({ children }) => {
 
   const loadTasks = async () => {
     try {
-      const tasksData = await firebaseService.getTasks();
+      const tasksData = isClient
+        ? await firebaseService.getTasksForProjects(
+            projects.map((project) => project.id)
+          )
+        : await firebaseService.getTasks();
       setTasks(tasksData);
     } catch (error) {
       console.error("Error loading tasks:", error);
@@ -62,6 +116,7 @@ export const ProjectProvider = ({ children }) => {
   }, []);
 
   const loadEmployees = async () => {
+    if (!isTeamMember) return;
     try {
       const employeesData = await firebaseService.getEmployees();
       setEmployees(employeesData);
@@ -71,11 +126,10 @@ export const ProjectProvider = ({ children }) => {
   };
 
   const loadCategories = async () => {
+    if (!isTeamMember) return;
     try {
       const categoriesData = await firebaseService.getCategories();
-      if (categoriesData.length > 0) {
-        setCategories(categoriesData);
-      }
+      setCategories(categoriesData);
     } catch (error) {
       console.error("Error loading categories:", error);
     }
@@ -162,6 +216,7 @@ export const ProjectProvider = ({ children }) => {
         ...taskData,
         createdBy: currentUser.uid,
         createdByName: currentUser.displayName,
+        createdByEmail: currentUser.email,
         status: taskData.status || "pending",
         priority: taskData.priority || "medium",
       });
@@ -191,6 +246,32 @@ export const ProjectProvider = ({ children }) => {
       setError("Failed to delete task");
       throw error;
     }
+  };
+
+  const addTaskComment = async (taskId, commentData) => {
+    try {
+      await firebaseService.addTaskComment(taskId, commentData);
+      await loadTasks();
+    } catch (error) {
+      setError("Failed to add comment");
+      throw error;
+    }
+  };
+
+  const provisionClient = async (clientData) => {
+    const result = await provisionClientAccount(clientData);
+    await loadProjects();
+    return result;
+  };
+
+  const resetClientCredentials = async (clientData) => {
+    return resetClientAccess(clientData);
+  };
+
+  const removeClientAccess = async (clientData) => {
+    const result = await removeClientProjectAccess(clientData);
+    await loadProjects();
+    return result;
   };
 
   const createEmployee = async (employeeData) => {
@@ -276,7 +357,9 @@ export const ProjectProvider = ({ children }) => {
 
   const getProjectsByEmployee = (employeeId) => {
     return projects.filter((project) =>
-      project.assignedTo?.some((member) => member.id === employeeId)
+      project.assignedTo?.some((member) =>
+        typeof member === "string" ? member === employeeId : member.id === employeeId
+      )
     );
   };
 
@@ -322,6 +405,10 @@ export const ProjectProvider = ({ children }) => {
     createTask,
     updateTask,
     deleteTask,
+    addTaskComment,
+    provisionClient,
+    resetClientCredentials,
+    removeClientAccess,
     getTasksByProject,
     getTasksByEmployee,
     getTasksByStatus,

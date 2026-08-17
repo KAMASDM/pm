@@ -104,7 +104,9 @@ const CreateTask = ({
     status: initialData?.status || "pending",
     priority: initialData?.priority || "medium",
     assignedTo: initialData?.assignedTo || null,
-    dueDate: initialData?.dueDate ? new Date(initialData.dueDate) : null,
+    dueDate: initialData?.dueDate
+      ? initialData.dueDate.toDate?.() || new Date(initialData.dueDate)
+      : null,
     estimatedHours: initialData?.estimatedHours || "",
     checklist: initialData?.checklist || [],
   });
@@ -117,10 +119,10 @@ const CreateTask = ({
 
   useEffect(() => {
     if (initialData) {
-      setFormData({
-        ...formData,
+      setFormData((current) => ({
+        ...current,
         checklist: initialData.checklist || [],
-      });
+      }));
     }
   }, [initialData]);
 
@@ -201,10 +203,20 @@ const CreateTask = ({
     setIsSubmitting(true);
     setErrors((prev) => ({ ...prev, submission: null }));
     try {
+      const assignee =
+        formData.assignedTo && typeof formData.assignedTo === "object"
+          ? formData.assignedTo
+          : employees.find((employee) => employee.id === formData.assignedTo);
+      const taskPayload = {
+        ...formData,
+        assignedTo: assignee?.id || formData.assignedTo || null,
+        assignedToName: assignee?.name || "",
+        assignedToEmail: assignee?.email || "",
+      };
       if (initialData) {
-        await updateTask(initialData.id, formData);
+        await updateTask(initialData.id, taskPayload);
       } else {
-        await createTask(formData);
+        await createTask(taskPayload);
       }
       if (onClose) {
         onClose();
@@ -259,6 +271,15 @@ const CreateTask = ({
                     onChange={(e) =>
                       handleInputChange("projectId", e.target.value)
                     }
+                    MenuProps={{
+                      PaperProps: {
+                        style: {
+                          maxHeight: 300,
+                          width: 'auto',
+                          minWidth: 250,
+                        },
+                      },
+                    }}
                   >
                     {(projects || []).map((project) => (
                       <MenuItem key={project.id} value={project.id}>
@@ -277,6 +298,15 @@ const CreateTask = ({
                     onChange={(e) =>
                       handleInputChange("milestoneId", e.target.value)
                     }
+                    MenuProps={{
+                      PaperProps: {
+                        style: {
+                          maxHeight: 300,
+                          width: 'auto',
+                          minWidth: 250,
+                        },
+                      },
+                    }}
                   >
                     {(milestones || [])
                       .filter((m) => m.projectId === formData.projectId)
@@ -301,6 +331,15 @@ const CreateTask = ({
                 value={formData.category}
                 label="Category"
                 onChange={(e) => handleInputChange("category", e.target.value)}
+                MenuProps={{
+                  PaperProps: {
+                    style: {
+                      maxHeight: 300,
+                      width: 'auto',
+                      minWidth: 250,
+                    },
+                  },
+                }}
               >
                 {(categories || []).map((category) => (
                   <MenuItem key={category.id} value={category.name}>
@@ -319,6 +358,15 @@ const CreateTask = ({
                     onChange={(e) =>
                       handleInputChange("priority", e.target.value)
                     }
+                    MenuProps={{
+                      PaperProps: {
+                        style: {
+                          maxHeight: 300,
+                          width: 'auto',
+                          minWidth: 200,
+                        },
+                      },
+                    }}
                   >
                     {priorityOptions.map((option) => (
                       <MenuItem key={option.value} value={option.value}>
@@ -337,6 +385,15 @@ const CreateTask = ({
                     onChange={(e) =>
                       handleInputChange("status", e.target.value)
                     }
+                    MenuProps={{
+                      PaperProps: {
+                        style: {
+                          maxHeight: 300,
+                          width: 'auto',
+                          minWidth: 200,
+                        },
+                      },
+                    }}
                   >
                     {statusOptions.map((option) => (
                       <MenuItem key={option.value} value={option.value}>

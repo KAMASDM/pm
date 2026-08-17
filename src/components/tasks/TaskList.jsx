@@ -239,7 +239,9 @@ const TaskList = () => {
         status: selectedTask.status || "pending",
         priority: selectedTask.priority || "medium",
         assignedTo: assigneeObject,
-        dueDate: selectedTask.dueDate ? new Date(selectedTask.dueDate) : null,
+        dueDate: selectedTask.dueDate
+          ? selectedTask.dueDate.toDate?.() || new Date(selectedTask.dueDate)
+          : null,
         estimatedHours: selectedTask.estimatedHours || "",
       });
       setActiveEditStep(0);

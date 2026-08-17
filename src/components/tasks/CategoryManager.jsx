@@ -29,6 +29,7 @@ import {
   InputLabel,
   Checkbox,
   ListItemText,
+  Tooltip,
 } from "@mui/material";
 import {
   Add,
@@ -102,6 +103,7 @@ const CategoryManager = () => {
           .toString(36)
           .substr(2, 9)}`,
         name: task,
+        description: "",
         status: taskStatusOptions[0].value,
         priority: taskPriorityOptions[0].value,
       };
@@ -113,6 +115,7 @@ const CategoryManager = () => {
           .toString(36)
           .substr(2, 9)}`,
       name: task.name,
+      description: task.description || "",
       status: task.status || taskStatusOptions[0].value,
       priority: task.priority || taskPriorityOptions[0].value,
       ...task,
@@ -124,6 +127,7 @@ const CategoryManager = () => {
     formData.subcategories?.forEach((_, index) => {
       initialValues[index] = {
         name: "",
+        description: "",
         status: taskStatusOptions[0].value,
         priority: taskPriorityOptions[0].value,
       };
@@ -137,6 +141,7 @@ const CategoryManager = () => {
       [subIndex]: {
         ...(prev[subIndex] || {
           name: "",
+          description: "",
           status: taskStatusOptions[0].value,
           priority: taskPriorityOptions[0].value,
         }),
@@ -150,8 +155,9 @@ const CategoryManager = () => {
     if (!taskDetails || !taskDetails.name?.trim()) return;
 
     const newTaskObject = {
-      id: String(Date.now() + Math.random()), // Simple unique ID
+      id: `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // More unique ID
       name: taskDetails.name.trim(),
+      description: taskDetails.description?.trim() || "",
       status: taskDetails.status,
       priority: taskDetails.priority,
     };
@@ -171,6 +177,7 @@ const CategoryManager = () => {
       [subIndex]: {
         ...prev[subIndex],
         name: "", // Reset name, keep status/priority for next task
+        description: "", // Reset description
       },
     }));
   };
@@ -635,17 +642,35 @@ const CategoryManager = () => {
                                         (s) => s.value === task.status
                                       )?.color || category.color;
                                     return (
-                                      <Chip
-                                        key={task.id || taskIndex} // task.id is preferred
-                                        label={task.name}
-                                        size="small"
-                                        variant="outlined"
-                                        sx={{
-                                          borderColor: statusColor,
-                                          color: statusColor,
-                                          backgroundColor: `${statusColor}1A`, // Lighter background with opacity
-                                        }}
-                                      />
+                                      <Tooltip
+                                        key={task.id || taskIndex}
+                                        title={
+                                          task.description ? (
+                                            <Box>
+                                              <Typography variant="caption" fontWeight={600}>
+                                                {task.name}
+                                              </Typography>
+                                              <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                                {task.description}
+                                              </Typography>
+                                            </Box>
+                                          ) : (
+                                            task.name
+                                          )
+                                        }
+                                        arrow
+                                      >
+                                        <Chip
+                                          label={task.name}
+                                          size="small"
+                                          variant="outlined"
+                                          sx={{
+                                            borderColor: statusColor,
+                                            color: statusColor,
+                                            backgroundColor: `${statusColor}1A`, // Lighter background with opacity
+                                          }}
+                                        />
+                                      </Tooltip>
                                     );
                                   })}
                                 </Box>
@@ -862,26 +887,44 @@ const CategoryManager = () => {
                           taskStatusOptions.find((s) => s.value === task.status)
                             ?.color || theme.palette.grey[700];
                         return (
-                          <Chip
+                          <Tooltip
                             key={task.id || taskIndex}
-                            label={task.name}
-                            onDelete={() =>
-                              handleRemoveTask(subIndex, taskIndex)
+                            title={
+                              task.description ? (
+                                <Box>
+                                  <Typography variant="caption" fontWeight={600}>
+                                    {task.name}
+                                  </Typography>
+                                  <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                    {task.description}
+                                  </Typography>
+                                </Box>
+                              ) : (
+                                task.name
+                              )
                             }
-                            disabled={actionLoading}
-                            sx={{
-                              borderColor: statusColor,
-                              color: statusColor,
-                              backgroundColor: `${statusColor}1A`,
-                              fontWeight: 500,
-                            }}
-                          />
+                            arrow
+                          >
+                            <Chip
+                              label={task.name}
+                              onDelete={() =>
+                                handleRemoveTask(subIndex, taskIndex)
+                              }
+                              disabled={actionLoading}
+                              sx={{
+                                borderColor: statusColor,
+                                color: statusColor,
+                                backgroundColor: `${statusColor}1A`,
+                                fontWeight: 500,
+                              }}
+                            />
+                          </Tooltip>
                         );
                       })}
                     </Box>
 
                     <Grid container spacing={2} alignItems="flex-end">
-                      <Grid item xs={12} sm={6}>
+                      <Grid item xs={12}>
                         <TextField
                           label="New Task Name"
                           fullWidth
@@ -894,13 +937,29 @@ const CategoryManager = () => {
                               e.target.value
                             )
                           }
-                          onKeyPress={(e) =>
-                            e.key === "Enter" && handleAddTask(subIndex)
+                          disabled={actionLoading}
+                          required
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          label="Task Description (Optional)"
+                          fullWidth
+                          variant="standard"
+                          multiline
+                          rows={2}
+                          value={newTaskValues[subIndex]?.description || ""}
+                          onChange={(e) =>
+                            handleNewTaskValueChange(
+                              subIndex,
+                              "description",
+                              e.target.value
+                            )
                           }
                           disabled={actionLoading}
                         />
                       </Grid>
-                      <Grid item xs={6} sm={3}>
+                      <Grid item xs={6} sm={6}>
                         <FormControl fullWidth variant="standard">
                           <InputLabel id={`task-status-label-${subIndex}`}>
                             Status

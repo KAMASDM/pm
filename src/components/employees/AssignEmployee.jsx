@@ -101,7 +101,8 @@ const AssignEmployee = ({
       );
 
       await updateProject(projectId, {
-        assignedTo: assignedEmployees.map((emp) => ({
+        assignedTo: assignedEmployees.map((emp) => emp.id),
+        teamMembers: assignedEmployees.map((emp) => ({
           id: emp.id,
           name: emp.name,
           email: emp.email,
@@ -122,7 +123,9 @@ const AssignEmployee = ({
 
   const getEmployeeWorkload = (employeeId) => {
     const assignedProjects = projects.filter((project) =>
-      project.assignedTo?.some((member) => member.id === employeeId)
+      project.assignedTo?.some((member) =>
+        typeof member === "string" ? member === employeeId : member.id === employeeId
+      )
     );
     return assignedProjects.length;
   };
