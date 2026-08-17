@@ -2,7 +2,9 @@
 
 import { initializeApp } from "firebase/app";
 import {
-  getAuth,
+  initializeAuth,
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
@@ -40,7 +42,13 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// Use localStorage explicitly instead of Auth's default IndexedDB-first
+// persistence. Some browsers close or hide the IndexedDB connection while a
+// Google popup owns focus, which can reject an otherwise successful sign-in.
+export const auth = initializeAuth(app, {
+  persistence: browserLocalPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver,
+});
 export const googleProvider = new GoogleAuthProvider();
 
 googleProvider.setCustomParameters({

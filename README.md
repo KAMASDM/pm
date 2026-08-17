@@ -46,6 +46,12 @@ Set the same client auth domain for Functions and the frontend. Copy `functions/
 
 Cloud Functions and scheduled reminders require a billing-enabled Firebase project. Push notifications require HTTPS outside localhost.
 
+## Netlify deployment
+
+The repository includes `netlify.toml` with the production build command, SPA fallback, cache policy, and the popup-compatible security headers required by Google sign-in. Configure the `VITE_*` values from `.env.example` in **Netlify → Site configuration → Environment variables**, then deploy the `main` branch.
+
+Every Netlify production or preview hostname used for sign-in must also appear under **Firebase Authentication → Settings → Authorized domains**. The production site `pm-asc.netlify.app` is already authorized. Firebase Auth uses explicit local-storage persistence so popup completion does not depend on an IndexedDB connection while the page is hidden.
+
 ## Bootstrap the first administrator
 
 1. Sign in once with the intended administrator's Google account. The access-pending screen is expected.
